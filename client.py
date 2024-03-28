@@ -3,23 +3,44 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import socket
 import struct
+import os
+import netifaces as ni
+import subprocess
 
 class ClientGUI:
     def __init__(self, master):
+        
         self.master = master
         master.title("UDP Client for File Access")
+        print(self.get_local_network())            
+
 
         # Server address and port
         self.server_address = ('localhost', 2222)
 
         # Initialize the client socket here
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.client_socket.settimeout(5)  # Optional: Set a timeout for socket operations
+        # self.client_socket.settimeout(5)  # Optional: Set a timeout for socket operations
 
+        # Response Display
+        self.response_text = tk.Text(master, height=10, width=60)
+        self.response_text.grid(row=0, column=0, padx=10, pady=5)
+        self.response_text.config(state=tk.DISABLED)
+              
+        # GUI for selecting server IP
+        self.frame_server_select = ttk.LabelFrame(master, text="Select Server IP")
+        self.frame_server_select.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+
+        ttk.Button(self.frame_server_select, text="Scan Network", command=self.scan_network).grid(row=0, column=0, padx=5, pady=5)
         
+        self.server_ip_var = tk.StringVar()
+        self.combobox_server_ip = ttk.Combobox(self.frame_server_select, textvariable=self.server_ip_var, state="readonly")
+        self.combobox_server_ip.grid(row=0, column=1, padx=5, pady=5)
+        
+
         # Frame for Read File Operation
         self.frame_read = ttk.LabelFrame(master, text="Read File")
-        self.frame_read.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        self.frame_read.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
         
         # Filepath Entry
         ttk.Label(self.frame_read, text="File Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -39,14 +60,10 @@ class ClientGUI:
         # Read Button
         ttk.Button(self.frame_read, text="Read", command=self.read_file).grid(row=3, column=0, columnspan=2, pady=5)
         
-        # Response Display
-        self.response_text = tk.Text(master, height=10, width=60)
-        self.response_text.grid(row=1, column=0, padx=10, pady=5)
-        self.response_text.config(state=tk.DISABLED)
 
         # Inside the ClientGUI __init__ method, add a frame for Insert File Operation
         self.frame_insert = ttk.LabelFrame(master, text="Insert Content")
-        self.frame_insert.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
+        self.frame_insert.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
 
         # Filepath Entry
         ttk.Label(self.frame_insert, text="File Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -68,7 +85,7 @@ class ClientGUI:
 
         # Monitoring File Operation
         self.frame_monitor = ttk.LabelFrame(master, text="Monitor File")
-        self.frame_monitor.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
+        self.frame_monitor.grid(row=4, column=0, padx=10, pady=10, sticky="ew")
 
         # Filepath Entry for Monitoring
         ttk.Label(self.frame_monitor, text="File Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -144,15 +161,16 @@ class ClientGUI:
 
     def send_monitor_request(self, filepath, interval):
         filepath_bytes = filepath.encode('utf-8')
-        message = struct.pack(f'!II{len(filepath_bytes)}sI', 3, len(filepath_bytes), filepath_bytes, interval)  # Service ID 3 for monitoring
+        message = struct.pack('!II{}sI'.format(len(filepath_bytes)), 3, len(filepath_bytes), filepath_bytes, interval)
         self.client_socket.sendto(message, self.server_address)
 
     def listen_for_updates(self):
         while True:
             try:
                 response, _ = self.client_socket.recvfrom(4096)
-                success, content = self.unpack_response(response)
-                message = content.decode('utf-8') if success else "Error: Monitoring update failed."
+                # Assuming all monitoring updates are plain text and do not require unpacking with unpack_response
+                message = response.decode('utf-8')
+                print(f"Received message: {message}")  # For debugging
                 self.display_response(f"Monitoring Update: {message}")
             except Exception as e:
                 print(f"Stopped listening for monitoring updates: {e}")
@@ -164,6 +182,38 @@ class ClientGUI:
             self.response_text.insert(tk.END, message + "\n")
             self.response_text.see(tk.END)  # Scroll to the end
             self.response_text.config(state=tk.DISABLED)
+
+    def scan_network(self):
+            """Scans the local network for active devices."""
+            # Assuming your network is 192.168.1.x
+            subnet = "192.168.18"
+            active_ips = []
+            for i in range(1, 10):
+                ip = f"{subnet}.{i}"
+                print(ip)
+                result = subprocess.run(["ping", "-c", "1", "-W", "1", ip], stdout=subprocess.DEVNULL)
+                if result.returncode == 0:
+                    print(ip, "DETECTED")
+                    active_ips.append(ip)
+            self.combobox_server_ip['values'] = active_ips
+            if active_ips:
+                self.combobox_server_ip.current(0)
+
+    def get_local_network(self):
+        # Get the default gateway interface
+        gws = ni.gateways()
+        default_gateway = gws['default'][ni.AF_INET][1]
+
+        # Get the IP address of the default gateway interface
+        ip = ni.ifaddresses(default_gateway)[ni.AF_INET][0]['addr']
+        netmask = ni.ifaddresses(default_gateway)[ni.AF_INET][0]['netmask']
+
+        # Calculate the network
+        ip_parts = ip.split('.')
+        netmask_parts = netmask.split('.')
+        network_parts = [str(int(ip_parts[i]) & int(netmask_parts[i])) for i in range(4)]
+        network = '.'.join(network_parts)
+        return network
 
     
 
