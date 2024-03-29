@@ -1,11 +1,12 @@
-import threading
-import tkinter as tk
-from tkinter import ttk, messagebox
+import os
 import socket
 import struct
-import os
-import netifaces as ni
 import subprocess
+import threading
+import tkinter as tk
+from tkinter import messagebox, ttk
+
+import netifaces as ni
 
 class ClientGUI:
     def __init__(self, master):
@@ -99,6 +100,30 @@ class ClientGUI:
 
         # Monitor Button
         ttk.Button(self.frame_monitor, text="Start Monitoring", command=self.start_monitoring).grid(row=2, column=0, columnspan=2, pady=5)
+
+        # GUI for Delete File Operation
+        self.frame_delete = ttk.LabelFrame(master, text="Delete File")
+        self.frame_delete.grid(row=5, column=0, padx=10, pady=10, sticky="ew")
+
+        # Filepath Entry for Delete
+        ttk.Label(self.frame_delete, text="File Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.delete_filepath = tk.StringVar()
+        ttk.Entry(self.frame_delete, textvariable=self.delete_filepath, width=50).grid(row=0, column=1, padx=5, pady=5)
+
+        # Delete Button
+        ttk.Button(self.frame_delete, text="Delete", command=self.delete_file).grid(row=1, column=0, columnspan=2, pady=5)
+
+        # GUI for Create File Operation
+        self.frame_create = ttk.LabelFrame(master, text="Create File")
+        self.frame_create.grid(row=6, column=0, padx=10, pady=10, sticky="ew")
+
+        # Filepath Entry for Create
+        ttk.Label(self.frame_create, text="File Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.create_filepath = tk.StringVar()
+        ttk.Entry(self.frame_create, textvariable=self.create_filepath, width=50).grid(row=0, column=1, padx=5, pady=5)
+
+        # Create Button
+        ttk.Button(self.frame_create, text="Create", command=self.create_file).grid(row=1, column=0, columnspan=2, pady=5)
 
     def read_file(self):
         filepath = self.filepath.get()
@@ -214,8 +239,43 @@ class ClientGUI:
         network_parts = [str(int(ip_parts[i]) & int(netmask_parts[i])) for i in range(4)]
         network = '.'.join(network_parts)
         return network
-
     
+    def delete_file(self):
+        filepath = self.delete_filepath.get()
+        response = self.send_delete_request(filepath)
+        success, message = self.unpack_response(response)
+        if success:
+            message = "Deletion successful"
+        else:
+            message = "Error: " + message.decode('utf-8')
+        self.display_response(message)
+
+    def send_delete_request(self, filepath):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
+            filepath_bytes = filepath.encode('utf-8')
+            message = struct.pack(f'!II{len(filepath_bytes)}s', 4, len(filepath_bytes), filepath_bytes)
+            client_socket.sendto(message, self.server_address)
+            response, _ = client_socket.recvfrom(4096)
+            return response
+        
+    def create_file(self):
+        filepath = self.create_filepath.get()
+        response = self.send_create_request(filepath)
+        success, message = self.unpack_response(response)
+        if success:
+            message = "Creation successful"
+        else:
+            message = "Error: " + message.decode('utf-8')
+        self.display_response(message)
+
+    def send_create_request(self, filepath):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
+            filepath_bytes = filepath.encode('utf-8')
+            message = struct.pack(f'!II{len(filepath_bytes)}s', 5, len(filepath_bytes), filepath_bytes)
+            client_socket.sendto(message, self.server_address)
+            response, _ = client_socket.recvfrom(4096)
+            return response
+        
 
 
 def main():

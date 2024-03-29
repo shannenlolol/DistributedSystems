@@ -1,6 +1,7 @@
 import socket
 import struct
 import time
+import os
 
 monitored_files = {}  # {filepath: [(client_address, expiration_time), ...]}
 
@@ -44,6 +45,29 @@ def notify_monitored_clients(filepath):
                     server_socket.sendto(content, client_address)
             except Exception as e:
                 print(f"Error notifying client {client_address}: {e}")
+
+def delete_file_content(filepath):
+    """Deletes a specified file."""
+    try:
+        os.remove(filepath)
+        # Optionally notify monitoring clients about the file deletion
+        # notify_monitored_clients(filepath)
+        return True, b"Deletion successful"
+    except FileNotFoundError:
+        return False, b"File not found"
+    except Exception as e:
+        return False, str(e).encode()
+
+# Add this new function in the server script
+def create_file_content(filepath):
+    """Creates a new file."""
+    try:
+        # Open the file in write mode which will create the file if it does not exist
+        with open(filepath, 'w') as file:
+            pass  # Just opening and closing the file is enough to create it
+        return True, b"Creation successful"
+    except Exception as e:
+        return False, str(e).encode()
                 
 # Extend process_request to handle the insert request
 def process_request(data, client_address):
@@ -101,9 +125,22 @@ def process_request(data, client_address):
             ack_message = f"Monitoring {filepath} for {interval} seconds".encode()
             print(f"Sending message: {ack_message}")
             server_socket.sendto(ack_message, client_address)
-
         except struct.error as e:
             print(f"Struct error during unpacking: {e}")
+
+    elif service_id == 4:  # Delete service
+        _, filepath_length = struct.unpack('!II', data[:8])
+        filepath, = struct.unpack(f'!{filepath_length}s', data[8:8+filepath_length])
+        filepath = filepath.decode('utf-8')
+        success, response_message = delete_file_content(filepath)
+        return struct.pack('!?I', success, len(response_message)) + response_message
+    
+    elif service_id == 5:  # Create service
+        _, filepath_length = struct.unpack('!II', data[:8])
+        filepath, = struct.unpack(f'!{filepath_length}s', data[8:8+filepath_length])
+        filepath = filepath.decode('utf-8')
+        success, response_message = create_file_content(filepath)
+        return struct.pack('!?I', success, len(response_message)) + response_message
 
 
 def start_server(port=2222):
