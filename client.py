@@ -3,16 +3,21 @@ import socket
 import struct
 import subprocess
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 import netifaces as ni
 
+
 class ClientGUI:
-    def __init__(self, master):
-        
+    def __init__(self, master, freshness_interval=30): 
         self.master = master
+        self.freshness_interval = freshness_interval
         master.title("UDP Client for File Access")
+
+        self.cache = {}  # Initialize an empty cache
+        
         print(self.get_local_network())            
 
 
@@ -129,9 +134,25 @@ class ClientGUI:
         filepath = self.filepath.get()
         offset = int(self.offset.get())
         length = int(self.length.get())
+
+        # Generate a unique key for each file read request based on filepath, offset, and length
+        cache_key = (filepath, offset, length)
+        
+        # Check if the request is cached and the cached data is still fresh
+        if cache_key in self.cache:
+            cached_data, timestamp = self.cache[cache_key]
+            if (time.time() - timestamp) < self.freshness_interval:
+                # Use cached data
+                print(f"Reading {cache_key} request from cache")
+                self.display_response(cached_data.decode('utf-8'))
+                return
+        
+        # If data is not in cache or is stale, fetch from server
         response = self.send_read_request(filepath, offset, length)
         success, content = self.unpack_response(response)
         if success:
+            # Update cache with new data
+            self.cache[cache_key] = (content, time.time())
             message = content.decode('utf-8')
         else:
             message = "Error: " + content.decode('utf-8')
@@ -160,6 +181,8 @@ class ClientGUI:
         filepath = self.insert_filepath.get()
         offset = int(self.insert_offset.get())
         content = self.insert_content.get().encode('utf-8')
+        # Invalidate relevant cache entries
+        self.invalidate_cache(filepath)
         response = self.send_insert_request(filepath, offset, content)
         success, message = self.unpack_response(response)
         if success:
@@ -196,6 +219,13 @@ class ClientGUI:
                 # Assuming all monitoring updates are plain text and do not require unpacking with unpack_response
                 message = response.decode('utf-8')
                 print(f"Received message: {message}")  # For debugging
+
+                # Getting file path from message
+                filepath = message.split(' updated: ')[0]
+
+                # Invalidate cache entries related to the updated file
+                self.invalidate_cache(filepath)
+
                 self.display_response(f"Monitoring Update: {message}")
             except Exception as e:
                 print(f"Stopped listening for monitoring updates: {e}")
@@ -276,11 +306,17 @@ class ClientGUI:
             response, _ = client_socket.recvfrom(4096)
             return response
         
+    def invalidate_cache(self, filepath):
+        # Invalidate all cache entries related to the filepath
+        for key in list(self.cache.keys()):
+            if key[0] == filepath:
+                print(f"Invalidating cache of key: {key}")
+                del self.cache[key]
+        
 
-
-def main():
+def main(freshness_interval=60):
     root = tk.Tk()
-    gui = ClientGUI(root)
+    gui = ClientGUI(root, freshness_interval=freshness_interval)
     root.mainloop()
 
 if __name__ == "__main__":

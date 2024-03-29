@@ -42,7 +42,8 @@ def notify_monitored_clients(filepath):
             try:
                 with open(filepath, 'rb') as file:
                     content = file.read()
-                    server_socket.sendto(content, client_address)
+                    update_message = f"{filepath} updated: {content}".encode('utf-8')  # Encoding the message with the file's content
+                    server_socket.sendto(update_message, client_address)
             except Exception as e:
                 print(f"Error notifying client {client_address}: {e}")
 
