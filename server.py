@@ -2,6 +2,21 @@ import socket
 import struct
 import time
 import os
+import argparse
+import random
+
+# Parse command-line arguments to determine invocation semantics
+parser = argparse.ArgumentParser(description='Start server with specified invocation semantics.')
+parser.add_argument('--semantics', choices=['at-least-once', 'at-most-once'], required=True,
+                    help='Invocation semantics to be used by the server (at-least-once or at-most-once).')
+args = parser.parse_args()
+
+invocation_semantics = args.semantics
+print(f"Server starting with {invocation_semantics} semantics.")
+
+# Tracks (request_id, client_address) -> response
+# This is to avoid re-executing operations for at-most-once semantics
+processed_requests = {}
 
 monitored_files = {}  # {filepath: [(client_address, expiration_time), ...]}
 
@@ -43,6 +58,7 @@ def notify_monitored_clients(filepath):
                 with open(filepath, 'rb') as file:
                     content = file.read()
                     update_message = f"{filepath} updated: {content}".encode('utf-8')  # Encoding the message with the file's content
+                    print(f"Sending to {client_address} updated content for {filepath} - {update_message}")
                     server_socket.sendto(update_message, client_address)
             except Exception as e:
                 print(f"Error notifying client {client_address}: {e}")
@@ -69,91 +85,91 @@ def create_file_content(filepath):
         return True, b"Creation successful"
     except Exception as e:
         return False, str(e).encode()
-                
-# Extend process_request to handle the insert request
+    
 def process_request(data, client_address):
-    service_id, = struct.unpack('!I', data[:4])
-    if service_id == 1:  # Read service (existing code)
-        try:
-            _, filepath_length = struct.unpack('!II', data[:8])
-            filepath, offset, length = struct.unpack(f'!{filepath_length}sII', data[8:])
-            filepath = filepath.decode('utf-8')
-            success, content = read_file_content(filepath, offset, length)
-            return struct.pack('!?I', success, len(content)) + content
-        except struct.error:
-            return struct.pack('!?I', False, 0) + b"Invalid request format"
+    drop_rate = 0.3  # 30% chance to simulate a message drop
+    if random.random() < drop_rate:
+        print(f"Simulating drop of request from {client_address}")
+        return None  # Return None or similar to indicate a simulated drop
+
+    # Unpack the first integer to get the length of request_id
+    request_id_length = struct.unpack('!I', data[:4])[0]
+    # Calculate where the request_id itself ends
+    request_id_end = 4 + request_id_length
+    request_id = data[4:request_id_end].decode('utf-8')  # Assuming you want to use the request_id as a string
+
+    # Now unpack service_id which follows request_id
+    service_id = struct.unpack('!I', data[request_id_end:request_id_end + 4])[0]
+
+    # Next, we need to find the length of the filepath
+    filepath_length_start = request_id_end + 4
+    filepath_length = struct.unpack('!I', data[filepath_length_start:filepath_length_start + 4])[0]
+
+    # Unpack filepath
+    filepath_start = filepath_length_start + 4
+    filepath_end = filepath_start + filepath_length
+    filepath = data[filepath_start:filepath_end].decode('utf-8')
+
+    # For at-most-once semantics, check if the request has been processed before
+    if invocation_semantics == "at-most-once" and request_id in processed_requests:
+        return processed_requests[request_id]
+    print(f"Received ServiceId {service_id} request from {client_address}")
+    if service_id == 1:  # Read service
+        additional_data_start = filepath_end
+        offset, length = struct.unpack('!II', data[additional_data_start:additional_data_start + 8])
+        success, content = read_file_content(filepath, offset, length)
+        response = struct.pack('!?I', success, len(content)) + content
 
     elif service_id == 2:  # Insert service
-        _, filepath_length = struct.unpack('!II', data[:8])
-        expected_end_of_data = 8 + filepath_length + 4 + 4  # start + filepath + offset + content_length
-        if len(data) < expected_end_of_data:
-            # Handle error: Data is shorter than expected
-            return struct.pack('!?I', False, 0) + b"Invalid request format"
-
-        unpack_format = f'!{filepath_length}sII'
-        filepath, offset, content_length = struct.unpack(unpack_format, data[8:8 + filepath_length + 8])
-        content = data[8 + filepath_length + 8:]
-        filepath = filepath.decode('utf-8')
-        success, response_message = insert_file_content(filepath, offset, content)
-        return struct.pack('!?I', success, len(response_message)) + response_message
+        # For Insert, we expect offset (4 bytes) and content to follow filepath
+        offset, = struct.unpack('!I', data[filepath_end:filepath_end + 4])
+        content_start = filepath_end + 4
+        content = data[content_start:]
+        success, message = insert_file_content(filepath, offset, content)
+        response = struct.pack('!?I', success, len(message)) + message
     
     elif service_id == 3:  # Monitor service
-        try:
-            # Unpack the filepath length right after the service_id
-            _, filepath_length = struct.unpack('!II', data[:8])
-            
-            # Ensure there is enough data for the filepath plus the interval
-            if len(data) < (8 + filepath_length + 4):
-                print("Data too short for expected format.")
-                error_message = "Error processing your monitoring request: Incomplete data.".encode()
-                server_socket.sendto(error_message, client_address)
-                return
-            
-            # Unpack the filepath using its length
-            filepath_format = f'!{filepath_length}s'
-            start_of_filepath = 8  # Starting byte of filepath data
-            end_of_filepath = start_of_filepath + filepath_length  # Ending byte of filepath data
-            filepath, = struct.unpack(filepath_format, data[start_of_filepath:end_of_filepath])
-            filepath = filepath.decode('utf-8')
-            
-            # Unpack the interval that follows immediately after the filepath
-            interval_format = '!I'
-            interval, = struct.unpack(interval_format, data[end_of_filepath:end_of_filepath + 4])
-            
-            # Register client for monitoring...
-            expiration_time = time.time() + interval
-            monitored_files.setdefault(filepath, []).append((client_address, expiration_time))
-            ack_message = f"Monitoring {filepath} for {interval} seconds".encode()
-            print(f"Sending message: {ack_message}")
-            server_socket.sendto(ack_message, client_address)
-        except struct.error as e:
-            print(f"Struct error during unpacking: {e}")
+        # For Monitor, we expect interval (4 bytes) to follow filepath
+        interval, = struct.unpack('!I', data[filepath_end:filepath_end + 4])
+        expiration_time = time.time() + interval
+        monitored_files.setdefault(filepath, []).append((client_address, expiration_time))
 
+        success = True  # The operation to start monitoring is always successful
+        ack_message = f"Monitoring {filepath} for {interval} seconds"
+        response_message = ack_message.encode('utf-8')
+
+        response = struct.pack('!?I', success, len(response_message)) + response_message
+    
     elif service_id == 4:  # Delete service
-        _, filepath_length = struct.unpack('!II', data[:8])
-        filepath, = struct.unpack(f'!{filepath_length}s', data[8:8+filepath_length])
-        filepath = filepath.decode('utf-8')
-        success, response_message = delete_file_content(filepath)
-        return struct.pack('!?I', success, len(response_message)) + response_message
+        # Delete only uses the filepath, which has been unpacked earlier
+        success, message = delete_file_content(filepath)
+        response = struct.pack('!?I', success, len(message)) + message
     
     elif service_id == 5:  # Create service
-        _, filepath_length = struct.unpack('!II', data[:8])
-        filepath, = struct.unpack(f'!{filepath_length}s', data[8:8+filepath_length])
-        filepath = filepath.decode('utf-8')
-        success, response_message = create_file_content(filepath)
-        return struct.pack('!?I', success, len(response_message)) + response_message
+        # Create only uses the filepath, similar to Delete
+        success, message = create_file_content(filepath)
+        response = struct.pack('!?I', success, len(message)) + message
+
+    else:
+        response = struct.pack('!?I', False, 0) + b"Unknown service ID"
+
+    # For at-most-once semantics, remember the response for this request
+    if invocation_semantics == "at-most-once":
+        processed_requests[request_id] = response
+
+    return response
 
 
 def start_server(port=2222):
     global server_socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind(('', port))
-    print(f"Server listening on port {port}")
+    print(f"Server listening on port {port} using {invocation_semantics} semantics.")
 
     try:
         while True:
-            message, client_address = server_socket.recvfrom(4096)
-            response = process_request(message, client_address)
+            data, client_address = server_socket.recvfrom(4096)
+            response = process_request(data, client_address)
             if response:
                 server_socket.sendto(response, client_address)
     except KeyboardInterrupt:
