@@ -1,7 +1,7 @@
 import socket
 import struct
 import time
-import datetime
+from datetime import datetime
 import os
 import argparse
 import random
@@ -18,6 +18,8 @@ print(f"Server starting with {invocation_semantics} semantics.")
 # Tracks (request_id, client_address) -> response
 # This is to avoid re-executing operations for at-most-once semantics
 processed_requests = {}
+
+simulate_drop_request_count = {} #For simulation of drop messages, tracks how many times a request is received
 
 monitored_files = {}  # {filepath: [(client_address, expiration_time), ...]}
 
@@ -97,6 +99,14 @@ def process_request(data, client_address):
     # Calculate where the request_id itself ends
     request_id_end = 4 + request_id_length
     request_id = data[4:request_id_end].decode('utf-8')  # Assuming you want to use the request_id as a string
+    if simulate_drop_request_count.get(request_id, False):
+        simulate_drop_request_count[request_id] += 1
+    else: 
+        simulate_drop_request_count[request_id] = 1
+        drop_rate = 0  # 30% chance to simulate a message drop
+        if random.random() < drop_rate:
+            print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of request from {client_address}")
+            return
 
     # Now unpack service_id which follows request_id
     service_id = struct.unpack('!I', data[request_id_end:request_id_end + 4])[0]
@@ -113,7 +123,7 @@ def process_request(data, client_address):
     # For at-most-once semantics, check if the request has been processed before
     if invocation_semantics == "at-most-once" and request_id in processed_requests:
         return processed_requests[request_id]
-    print(f"{datetime.datetime.now()} Received ServiceId {service_id} request from {client_address}")
+    print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Received ServiceId {service_id} request from {client_address}")
     if service_id == 1:  # Read service
         additional_data_start = filepath_end
         offset, length = struct.unpack('!II', data[additional_data_start:additional_data_start + 8])
@@ -129,15 +139,21 @@ def process_request(data, client_address):
         response = struct.pack('!?I', success, len(message)) + message
     
     elif service_id == 3:  # Monitor service
-        # For Monitor, we expect interval (4 bytes) to follow filepath
-        interval, = struct.unpack('!I', data[filepath_end:filepath_end + 4])
-        expiration_time = time.time() + interval
-        monitored_files.setdefault(filepath, []).append((client_address, expiration_time))
+        # Check if the file exists
+        if os.path.exists(filepath):
+            # For Monitor, we expect interval (4 bytes) to follow filepath
+            interval, = struct.unpack('!I', data[filepath_end:filepath_end + 4])
+            expiration_time = time.time() + interval
+            monitored_files.setdefault(filepath, []).append((client_address, expiration_time))
 
-        success = True  # The operation to start monitoring is always successful
-        ack_message = f"Monitoring {filepath} for {interval} seconds"
-        response_message = ack_message.encode('utf-8')
-
+            success = True  # The operation to start monitoring is always successful
+            ack_message = f"Monitoring {filepath} for {interval} seconds"
+            response_message = ack_message.encode('utf-8')
+        else:
+            # File not found
+            success = False
+            response_message = b"File Not Found"
+            
         response = struct.pack('!?I', success, len(response_message)) + response_message
     
     elif service_id == 4:  # Delete service
@@ -170,12 +186,8 @@ def start_server(port=2222):
         while True:
             data, client_address = server_socket.recvfrom(4096)
             response = process_request(data, client_address)
-            drop_rate = 1  # 30% chance to simulate a message drop
-            if random.random() < drop_rate:
-                print(f"Simulating drop of request from {client_address}")
-            else:
-                if response:
-                    server_socket.sendto(response, client_address)
+            if response:
+                server_socket.sendto(response, client_address)
     except KeyboardInterrupt:
         print("Server shutting down.")
     finally:
