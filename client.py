@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import random
 import socket
@@ -8,8 +9,6 @@ import time
 import tkinter as tk
 import uuid
 from tkinter import messagebox, ttk
-
-import netifaces as ni
 
 
 class ClientGUI:
@@ -46,7 +45,7 @@ class ClientGUI:
         self.check_pending_requests_thread = threading.Thread(target=self.check_pending_requests, daemon=True)
         self.check_pending_requests_thread.start()
 
-        print(self.get_local_network())
+        # print(self.get_local_network())
 
         self.server_address = ('10.91.15.67', 2222)
 
@@ -54,15 +53,15 @@ class ClientGUI:
 
         # Replace master with self.scrollable_frame for your GUI elements
         self.response_text = tk.Text(self.scrollable_frame, height=10, width=60)
-        self.response_text.grid(row=0, column=0, padx=10, pady=5)
+        self.response_text.grid(row=0, column=0, padx=10, pady=30)
         self.response_text.config(state=tk.DISABLED)
 
-        self.frame_server_select = ttk.LabelFrame(self.scrollable_frame, text="Select Server IP")
-        self.frame_server_select.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
-        ttk.Button(self.frame_server_select, text="Scan Network", command=self.scan_network).grid(row=0, column=0, padx=5, pady=5)
-        self.server_ip_var = tk.StringVar()
-        self.combobox_server_ip = ttk.Combobox(self.frame_server_select, textvariable=self.server_ip_var, state="readonly")
-        self.combobox_server_ip.grid(row=0, column=1, padx=5, pady=5)
+        # self.frame_server_select = ttk.LabelFrame(self.scrollable_frame, text="Select Server IP")
+        # self.frame_server_select.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        # ttk.Button(self.frame_server_select, text="Scan Network", command=self.scan_network).grid(row=0, column=0, padx=5, pady=5)
+        # self.server_ip_var = tk.StringVar()
+        # self.combobox_server_ip = ttk.Combobox(self.frame_server_select, textvariable=self.server_ip_var, state="readonly")
+        # self.combobox_server_ip.grid(row=0, column=1, padx=5, pady=5)
         
         # Frame for Read File Operation
         self.frame_read = ttk.LabelFrame(self.scrollable_frame, text="Read File")
@@ -76,12 +75,12 @@ class ClientGUI:
         # Offset Entry
         ttk.Label(self.frame_read, text="Offset:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.offset = tk.StringVar()
-        ttk.Entry(self.frame_read, textvariable=self.offset).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Entry(self.frame_read, textvariable=self.offset).grid(row=1, column=1, padx=5, pady=5, sticky="w")
         
         # Length Entry
         ttk.Label(self.frame_read, text="Length:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.length = tk.StringVar()
-        ttk.Entry(self.frame_read, textvariable=self.length).grid(row=2, column=1, padx=5, pady=5)
+        ttk.Entry(self.frame_read, textvariable=self.length).grid(row=2, column=1, padx=5, pady=5 , sticky="w")
         
         # Read Button
         ttk.Button(self.frame_read, text="Read", command=self.read_file).grid(row=3, column=0, columnspan=2, pady=5)
@@ -99,12 +98,12 @@ class ClientGUI:
         # Offset Entry
         ttk.Label(self.frame_insert, text="Offset:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.insert_offset = tk.StringVar()
-        ttk.Entry(self.frame_insert, textvariable=self.insert_offset).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Entry(self.frame_insert, textvariable=self.insert_offset).grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
         # Content Entry
         ttk.Label(self.frame_insert, text="Content:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.insert_content = tk.StringVar()
-        ttk.Entry(self.frame_insert, textvariable=self.insert_content).grid(row=2, column=1, padx=5, pady=5)
+        ttk.Entry(self.frame_insert, textvariable=self.insert_content).grid(row=2, column=1, padx=5, pady=5, sticky="w")
 
         # Insert Button
         ttk.Button(self.frame_insert, text="Insert", command=self.insert_content_to_file).grid(row=3, column=0, columnspan=2, pady=5)
@@ -119,9 +118,9 @@ class ClientGUI:
         ttk.Entry(self.frame_monitor, textvariable=self.monitor_filepath, width=50).grid(row=0, column=1, padx=5, pady=5)
 
         # Interval Entry
-        ttk.Label(self.frame_monitor, text="Interval (seconds):").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ttk.Label(self.frame_monitor, text="Interval (s):").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.monitor_interval = tk.StringVar()
-        ttk.Entry(self.frame_monitor, textvariable=self.monitor_interval).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Entry(self.frame_monitor, textvariable=self.monitor_interval).grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
         # Monitor Button
         ttk.Button(self.frame_monitor, text="Start Monitoring", command=self.start_monitoring).grid(row=2, column=0, columnspan=2, pady=5)
@@ -187,6 +186,19 @@ class ClientGUI:
         else:
             self.canvas.itemconfig(self.canvas_frame, width=canvas_width)
 
+    def check_response(self, response, cache_key=None):
+        if response:
+            success, content = self.unpack_response(response)
+            if success:
+                # Update cache with new data
+                if cache_key:  
+                    self.cache[cache_key] = (content, time.time())
+                message = content.decode('utf-8')
+            else:
+                message = "Error: " + content.decode('utf-8')
+            self.display_response(message)
+            return success
+        return False
 
     def read_file(self):
         filepath = self.filepath.get()
@@ -202,30 +214,19 @@ class ClientGUI:
             if (time.time() - timestamp) < self.freshness_interval:
                 # Use cached data
                 print(f"Reading {cache_key} request from cache")
-                self.display_response(cached_data.decode('utf-8'))
+                self.display_response(f"Reading from cache: {cached_data.decode('utf-8')}")
                 return
         
         # If data is not in cache or is stale, fetch from server
         response = self.send_read_request(filepath, offset, length)
-        success, content = self.unpack_response(response)
-        if success:
-            # Update cache with new data
-            self.cache[cache_key] = (content, time.time())
-            message = content.decode('utf-8')
-        else:
-            message = "Error: " + content.decode('utf-8')
-        self.display_response(message)
+        self.check_response(response, cache_key)
+
                 
     def unpack_response(self, data):
         success, content_length = struct.unpack('!?I', data[:5])
         content = data[5:5+content_length]
         return success, content
     
-    def display_response(self, message):
-        self.response_text.config(state=tk.NORMAL)
-        self.response_text.delete(1.0, tk.END)
-        self.response_text.insert(tk.END, message)
-        self.response_text.config(state=tk.DISABLED)
 
     def insert_content_to_file(self):
         filepath = self.insert_filepath.get()
@@ -253,7 +254,7 @@ class ClientGUI:
             self.monitor_thread.start()
             message = message.decode('utf-8')
         else:
-            message = "Monitoring Error " + message.decode('utf-8')
+            message = "Monitoring Error: " + message.decode('utf-8')
         self.display_response(message)
 
     def listen_for_updates(self):
@@ -276,9 +277,12 @@ class ClientGUI:
                 break
 
     def display_response(self, message):
+        timestamp = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        # Combine the timestamp with the original message
+        message_with_timestamp = f"{timestamp} - {message}"
         if self.response_text.winfo_exists():  # Check if the widget still exists
             self.response_text.config(state=tk.NORMAL)
-            self.response_text.insert(tk.END, message + "\n")
+            self.response_text.insert(tk.END, message_with_timestamp + "\n")
             self.response_text.see(tk.END)  # Scroll to the end
             self.response_text.config(state=tk.DISABLED)
 
@@ -298,21 +302,21 @@ class ClientGUI:
             if active_ips:
                 self.combobox_server_ip.current(0)
 
-    def get_local_network(self):
-        # Get the default gateway interface
-        gws = ni.gateways()
-        default_gateway = gws['default'][ni.AF_INET][1]
+    # def get_local_network(self):
+    #     # Get the default gateway interface
+    #     gws = ni.gateways()
+    #     default_gateway = gws['default'][ni.AF_INET][1]
 
-        # Get the IP address of the default gateway interface
-        ip = ni.ifaddresses(default_gateway)[ni.AF_INET][0]['addr']
-        netmask = ni.ifaddresses(default_gateway)[ni.AF_INET][0]['netmask']
+    #     # Get the IP address of the default gateway interface
+    #     ip = ni.ifaddresses(default_gateway)[ni.AF_INET][0]['addr']
+    #     netmask = ni.ifaddresses(default_gateway)[ni.AF_INET][0]['netmask']
 
-        # Calculate the network
-        ip_parts = ip.split('.')
-        netmask_parts = netmask.split('.')
-        network_parts = [str(int(ip_parts[i]) & int(netmask_parts[i])) for i in range(4)]
-        network = '.'.join(network_parts)
-        return network
+    #     # Calculate the network
+    #     ip_parts = ip.split('.')
+    #     netmask_parts = netmask.split('.')
+    #     network_parts = [str(int(ip_parts[i]) & int(netmask_parts[i])) for i in range(4)]
+    #     network = '.'.join(network_parts)
+    #     return network
     
     def delete_file(self):
         filepath = self.delete_filepath.get()
@@ -340,12 +344,6 @@ class ClientGUI:
         return uuid.uuid4().hex
     
     def send_generic_request(self, service_id, filepath, *additional_data):
-
-        # drop_rate = 0.3  # 30% chance to simulate a message drop
-        # if random.random() < drop_rate:
-        #     print(f"Simulating drop of request to {filepath}")
-        #     return  # Simulate drop by returning early
-
         request_id = self.generate_request_id().encode('utf-8')
         filepath_bytes = filepath.encode('utf-8')
 
@@ -371,11 +369,27 @@ class ClientGUI:
         # Combine all parts of the message
         message = b''.join(message_parts)
 
-        # Tracking request for simulation
-        self.pending_requests[request_id] = {"send_time": time.time(), "data": message}
-        
+        if service_id == 1:  # Assuming 1 is the service_id for reading a file
+            offset, length = additional_data
+            cache_key = (filepath, struct.unpack('!I', offset)[0], struct.unpack('!I', length)[0])
+        else:
+            cache_key = None
+
+        # Store the request details including the cache_key
+        self.pending_requests[request_id] = {"send_time": time.time(), "data": message, "cache_key": cache_key}
+
+        drop_rate = 0  # 30% chance to simulate a message drop
+        if random.random() < drop_rate:
+            print(f"Simulating drop of request to {filepath}")
+            return  # Simulate drop by returning early
+        self.client_socket.settimeout(5)
         self.client_socket.sendto(message, self.server_address)
+        
         response, _ = self.client_socket.recvfrom(4096)
+        if not response:
+            print("Socket did not receive data or connection timed out")
+            return None
+        self.client_socket.settimeout(None)
         # Upon receiving a response, remove the request from pending_requests
         del self.pending_requests[request_id]
         return response
@@ -430,13 +444,25 @@ class ClientGUI:
         while True:
             current_time = time.time()
             for request_id, request_details in list(self.pending_requests.items()):
-                if current_time - request_details["send_time"] > 60:  # 60-second timeout
+                if current_time - request_details["send_time"] > 20:  # 5-second timeout
                     print(f"Resending request {request_id} due to timeout")
                     # Resend the request
+                    self.client_socket.settimeout(5)
                     self.client_socket.sendto(request_details["data"], self.server_address)
-                    # Update the send time
-                    request_details["send_time"] = current_time
-            time.sleep(15)  # Check every 15 seconds
+                    response, _ = self.client_socket.recvfrom(4096)
+                    if not response:
+                        print("Resend request Socket did not receive data or connection timed out")
+                        # Update the send time
+                        request_details["send_time"] = current_time
+                    else:
+                        success = self.check_response(response, request_details["cache_key"])
+                        if success:
+                            print(f"Resend request {request_id} successful")
+                            del self.pending_requests[request_id]
+                        else:
+                            request_details["send_time"] = current_time
+                    self.client_socket.settimeout(None)
+            time.sleep(10)  # Check every 1 seconds
         
 
 def main(freshness_interval=60):
