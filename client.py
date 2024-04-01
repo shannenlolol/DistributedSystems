@@ -13,33 +13,51 @@ import netifaces as ni
 
 
 class ClientGUI:
-    def __init__(self, master, freshness_interval=30): 
+    def __init__(self, master, freshness_interval=30):
         self.master = master
         self.freshness_interval = freshness_interval
         master.title("UDP Client for File Access")
 
-        self.cache = {}  # Initialize an empty cache
+        # Make window full screen
+        master.state('zoomed')
 
-        # to retransmit "dropped" messages in simulation, if not can comment out
-        self.pending_requests = {}  # request_id -> {"send_time": timestamp, "data": request_data}
+        # Set up the scrollable canvas
+        self.canvas = tk.Canvas(master, highlightthickness=0)  # Removing canvas border
+        self.scrollbar = tk.Scrollbar(master, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        # Use a Frame to contain all widgets, which will be placed inside the canvas
+        self.scrollable_frame = ttk.Frame(self.canvas)
+
+        self.canvas_frame = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="center")
+
+        # Update the scrollregion to encompass the scrollable_frame
+        self.scrollable_frame.bind("<Configure>", self.onFrameConfigure)
+
+        # Center the canvas' window when the master widget is resized
+        master.bind("<Configure>", self.onMasterConfigure)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.cache = {}
+
+        self.pending_requests = {}
         self.check_pending_requests_thread = threading.Thread(target=self.check_pending_requests, daemon=True)
         self.check_pending_requests_thread.start()
-        
-        print(self.get_local_network())            
 
-        # Server address and port
-        self.server_address = ('localhost', 2222)
+        print(self.get_local_network())
 
-        # Initialize the client socket here
+        self.server_address = ('10.91.15.67', 2222)
+
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        # Response Display
-        self.response_text = tk.Text(master, height=10, width=60)
+        # Replace master with self.scrollable_frame for your GUI elements
+        self.response_text = tk.Text(self.scrollable_frame, height=10, width=60)
         self.response_text.grid(row=0, column=0, padx=10, pady=5)
         self.response_text.config(state=tk.DISABLED)
-              
-        # GUI for selecting server IP
-        self.frame_server_select = ttk.LabelFrame(master, text="Select Server IP")
+
+        self.frame_server_select = ttk.LabelFrame(self.scrollable_frame, text="Select Server IP")
         self.frame_server_select.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
         ttk.Button(self.frame_server_select, text="Scan Network", command=self.scan_network).grid(row=0, column=0, padx=5, pady=5)
         self.server_ip_var = tk.StringVar()
@@ -47,7 +65,7 @@ class ClientGUI:
         self.combobox_server_ip.grid(row=0, column=1, padx=5, pady=5)
         
         # Frame for Read File Operation
-        self.frame_read = ttk.LabelFrame(master, text="Read File")
+        self.frame_read = ttk.LabelFrame(self.scrollable_frame, text="Read File")
         self.frame_read.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
         
         # Filepath Entry
@@ -70,7 +88,7 @@ class ClientGUI:
         
 
         # Inside the ClientGUI __init__ method, add a frame for Insert File Operation
-        self.frame_insert = ttk.LabelFrame(master, text="Insert Content")
+        self.frame_insert = ttk.LabelFrame(self.scrollable_frame, text="Insert Content")
         self.frame_insert.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
 
         # Filepath Entry
@@ -92,7 +110,7 @@ class ClientGUI:
         ttk.Button(self.frame_insert, text="Insert", command=self.insert_content_to_file).grid(row=3, column=0, columnspan=2, pady=5)
 
         # Monitoring File Operation
-        self.frame_monitor = ttk.LabelFrame(master, text="Monitor File")
+        self.frame_monitor = ttk.LabelFrame(self.scrollable_frame, text="Monitor File")
         self.frame_monitor.grid(row=4, column=0, padx=10, pady=10, sticky="ew")
 
         # Filepath Entry for Monitoring
@@ -109,7 +127,7 @@ class ClientGUI:
         ttk.Button(self.frame_monitor, text="Start Monitoring", command=self.start_monitoring).grid(row=2, column=0, columnspan=2, pady=5)
 
         # GUI for Delete File Operation
-        self.frame_delete = ttk.LabelFrame(master, text="Delete File")
+        self.frame_delete = ttk.LabelFrame(self.scrollable_frame, text="Delete File")
         self.frame_delete.grid(row=5, column=0, padx=10, pady=10, sticky="ew")
 
         # Filepath Entry for Delete
@@ -121,7 +139,7 @@ class ClientGUI:
         ttk.Button(self.frame_delete, text="Delete", command=self.delete_file).grid(row=1, column=0, columnspan=2, pady=5)
 
         # GUI for Create File Operation
-        self.frame_create = ttk.LabelFrame(master, text="Create File")
+        self.frame_create = ttk.LabelFrame(self.scrollable_frame, text="Create File")
         self.frame_create.grid(row=6, column=0, padx=10, pady=10, sticky="ew")
 
         # Filepath Entry for Create
@@ -132,6 +150,44 @@ class ClientGUI:
         # Create Button
         ttk.Button(self.frame_create, text="Create", command=self.create_file).grid(row=1, column=0, columnspan=2, pady=5)
     
+    def onFrameConfigure(self, event=None):
+        '''Reset the scroll region to encompass the inner frame'''
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self.recenterCanvasWindow()
+
+    def onMasterConfigure(self, event=None):
+        '''Center the canvas window when the main window is resized'''
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+        frame_width = self.scrollable_frame.winfo_reqwidth()
+        frame_height = self.scrollable_frame.winfo_reqheight()
+        
+        # Calculate the new position coordinates for the frame
+        new_x_position = max((canvas_width - frame_width) // 2, 0)
+        new_y_position = max((canvas_height - frame_height) // 2, 0)
+        
+        self.canvas.coords(self.canvas_frame, (new_x_position, new_y_position))
+
+        # Set canvas window's width to frame's width and height to either frame's height or the height of the canvas
+        if canvas_width > frame_width or canvas_height > frame_height:
+            self.canvas.itemconfig(self.canvas_frame, width=frame_width, height=max(frame_height, canvas_height))
+
+
+    def recenterCanvasWindow(self):
+        '''Re-centers the canvas window'''
+        self.master.update_idletasks()  # Update geometry information
+        canvas_width = self.canvas.winfo_width()
+        frame_width = self.scrollable_frame.winfo_reqwidth()
+        new_x_position = max((canvas_width - frame_width) // 2, 0)
+        self.canvas.coords(self.canvas_frame, new_x_position, 0)
+
+        # Adjust the width of the canvas window to match the frame's width if the canvas is larger
+        if canvas_width > frame_width:
+            self.canvas.itemconfig(self.canvas_frame, width=frame_width)
+        else:
+            self.canvas.itemconfig(self.canvas_frame, width=canvas_width)
+
+
     def read_file(self):
         filepath = self.filepath.get()
         offset = int(self.offset.get())
@@ -285,10 +341,10 @@ class ClientGUI:
     
     def send_generic_request(self, service_id, filepath, *additional_data):
 
-        drop_rate = 0.3  # 30% chance to simulate a message drop
-        if random.random() < drop_rate:
-            print(f"Simulating drop of request to {filepath}")
-            return  # Simulate drop by returning early
+        # drop_rate = 0.3  # 30% chance to simulate a message drop
+        # if random.random() < drop_rate:
+        #     print(f"Simulating drop of request to {filepath}")
+        #     return  # Simulate drop by returning early
 
         request_id = self.generate_request_id().encode('utf-8')
         filepath_bytes = filepath.encode('utf-8')
