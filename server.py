@@ -1,6 +1,7 @@
 import socket
 import struct
 import time
+import datetime
 import os
 import argparse
 import random
@@ -48,16 +49,21 @@ def insert_file_content(filepath, offset, content):
     except Exception as e:
         return False, str(e).encode()
 
-def notify_monitored_clients(filepath):
+def notify_monitored_clients(filepath, delete=False):
     """Notifies clients monitoring the specified file about its update."""
     current_time = time.time()
     clients_to_notify = monitored_files.get(filepath, [])
     for client_address, expiration_time in clients_to_notify:
         if expiration_time > current_time:
             try:
-                with open(filepath, 'rb') as file:
-                    content = file.read()
-                    update_message = f"{filepath} updated: {content}".encode('utf-8')  # Encoding the message with the file's content
+                if delete == False:
+                    with open(filepath, 'rb') as file:
+                        content = file.read()
+                        update_message = f"{filepath} updated: {content}".encode('utf-8')  # Encoding the message with the file's content
+                        print(f"Sending to {client_address} updated content for {filepath} - {update_message}")
+                        server_socket.sendto(update_message, client_address)
+                else:
+                    update_message = f"{filepath} deleted".encode('utf-8')
                     print(f"Sending to {client_address} updated content for {filepath} - {update_message}")
                     server_socket.sendto(update_message, client_address)
             except Exception as e:
@@ -67,8 +73,7 @@ def delete_file_content(filepath):
     """Deletes a specified file."""
     try:
         os.remove(filepath)
-        # Optionally notify monitoring clients about the file deletion
-        # notify_monitored_clients(filepath)
+        notify_monitored_clients(filepath, delete=True)
         return True, b"Deletion successful"
     except FileNotFoundError:
         return False, b"File not found"
@@ -87,11 +92,6 @@ def create_file_content(filepath):
         return False, str(e).encode()
     
 def process_request(data, client_address):
-    drop_rate = 0.3  # 30% chance to simulate a message drop
-    if random.random() < drop_rate:
-        print(f"Simulating drop of request from {client_address}")
-        return None  # Return None or similar to indicate a simulated drop
-
     # Unpack the first integer to get the length of request_id
     request_id_length = struct.unpack('!I', data[:4])[0]
     # Calculate where the request_id itself ends
@@ -113,7 +113,7 @@ def process_request(data, client_address):
     # For at-most-once semantics, check if the request has been processed before
     if invocation_semantics == "at-most-once" and request_id in processed_requests:
         return processed_requests[request_id]
-    print(f"Received ServiceId {service_id} request from {client_address}")
+    print(f"{datetime.datetime.now()} Received ServiceId {service_id} request from {client_address}")
     if service_id == 1:  # Read service
         additional_data_start = filepath_end
         offset, length = struct.unpack('!II', data[additional_data_start:additional_data_start + 8])
@@ -170,8 +170,12 @@ def start_server(port=2222):
         while True:
             data, client_address = server_socket.recvfrom(4096)
             response = process_request(data, client_address)
-            if response:
-                server_socket.sendto(response, client_address)
+            drop_rate = 1  # 30% chance to simulate a message drop
+            if random.random() < drop_rate:
+                print(f"Simulating drop of request from {client_address}")
+            else:
+                if response:
+                    server_socket.sendto(response, client_address)
     except KeyboardInterrupt:
         print("Server shutting down.")
     finally:
