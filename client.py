@@ -122,7 +122,8 @@ class ClientGUI:
         ttk.Entry(self.frame_monitor, textvariable=self.monitor_interval).grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
         # Monitor Button
-        ttk.Button(self.frame_monitor, text="Start Monitoring", command=self.start_monitoring).grid(row=2, column=0, columnspan=2, pady=5)
+        self.monitor_button = ttk.Button(self.frame_monitor, text="Start Monitoring", command=self.start_monitoring)
+        self.monitor_button.grid(row=2, column=0, columnspan=2, pady=5)
 
         # Frame for Delete File Operation -----------------------------------------------------------------------------------------------------------
         self.frame_delete = ttk.LabelFrame(self.scrollable_frame, text="Delete File")
@@ -375,6 +376,11 @@ class ClientGUI:
             try:
                 response, _ = self.client_socket.recvfrom(4096)
                 message = response.decode('utf-8')
+                
+                if(message[0:5] == "FALSE"):
+                    self.display_response(f"Monitoring Update: {message[6:]}")
+                    self.monitor_button['state'] = 'normal'  # Enable the button
+                    break
                 print(f"Received message: {message}")  
 
                 # Getting file path from message
@@ -402,6 +408,7 @@ class ClientGUI:
             self.monitor_thread = threading.Thread(target=self.listen_for_updates, daemon=True)
             self.monitor_thread.start()
             message = message.decode('utf-8')
+            self.monitor_button['state'] = 'disabled'  # Disable the button
         else:
             message = "Monitoring Error: " + message.decode('utf-8')
         self.display_response(message)

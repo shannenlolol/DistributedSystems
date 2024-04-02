@@ -95,7 +95,7 @@ def create_file_content(filepath):
 
 def monitor_end_thread(filepath, client_address, duration):
     time.sleep(duration)
-    update_message = f"Monitoring {filepath} has ended".encode('utf-8')
+    update_message = f"FALSE Monitoring {filepath} shutting down".encode('utf-8')
     print(f"Sending to {client_address} updated content for {filepath} - {update_message}")
     server_socket.sendto(update_message, client_address)
 
