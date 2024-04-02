@@ -26,7 +26,9 @@ simulate_drop_request_count = {}
 monitored_files = {} 
 
 def read_file_content(filepath, offset, length):
-    """Reads a specific portion of a file at the specified offset and length."""
+    """
+    Reads a specific portion of a file at the specified offset and length.
+    """
     try:
         with open(filepath, 'rb') as file:
             file.seek(offset)
@@ -38,7 +40,9 @@ def read_file_content(filepath, offset, length):
         return False, str(e).encode()
 
 def insert_file_content(filepath, offset, content):
-    """Insert content into a file at the specified offset and notifies any monitoring clients."""
+    """
+    Insert content into a file at the specified offset and notifies any monitoring clients.
+    """
     try:
         with open(filepath, 'r+b') as file:
             file.seek(offset)
@@ -53,7 +57,9 @@ def insert_file_content(filepath, offset, content):
         return False, str(e).encode()
 
 def notify_monitored_clients(filepath, delete=False):
-    """Notifies clients monitoring the specified file about its update."""
+    """
+    Notifies clients monitoring the specified file about its update.
+    """
     current_time = time.time()
     clients_to_notify = monitored_files.get(filepath, [])
     for client_address, expiration_time in clients_to_notify:
@@ -73,7 +79,9 @@ def notify_monitored_clients(filepath, delete=False):
                 print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Error notifying client {client_address}: {e}")
 
 def delete_file_content(filepath):
-    """Deletes a specified file."""
+    """
+    Deletes a specified file.
+    """
     try:
         os.remove(filepath)
         notify_monitored_clients(filepath, delete=True)
@@ -84,7 +92,9 @@ def delete_file_content(filepath):
         return False, str(e).encode()
 
 def create_file_content(filepath):
-    """Creates a new file at the specified filepath."""
+    """
+    Creates a new file at the specified filepath.
+    """
     try:
         with open(filepath, 'w') as file:
             pass
@@ -93,27 +103,24 @@ def create_file_content(filepath):
         return False, str(e).encode()
 
 def monitor_end_thread(filepath, client_address, duration):
-    """Monitors the specified file for a certain duration and sends a notification to the client upon expiration."""
+    """
+    Monitors the specified file for a certain duration and sends a notification to the client upon expiration.
+    """
     time.sleep(duration)
     update_message = f"FALSE Monitoring {filepath} shutting down".encode('utf-8')
     print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Sending to {client_address} updated content for {filepath} - {update_message}")
     server_socket.sendto(update_message, client_address)
 
 def process_request(data, client_address):
-    """Processes the incoming request from a client and executes the corresponding service."""
+    """
+    Processes the incoming request from a client and executes the corresponding service.
+    """
+
     # Unpack the first integer to get the length of request_id
     request_id_length = struct.unpack('!I', data[:4])[0]
     # Calculate where the request_id itself ends
     request_id_end = 4 + request_id_length
     request_id = data[4:request_id_end].decode('utf-8')
-    if simulate_drop_request_count.get(request_id, False):
-        simulate_drop_request_count[request_id] += 1
-    else: 
-        simulate_drop_request_count[request_id] = 1
-        drop_rate = 0  # Simulation: Chance that a message is dropped
-        if random.random() < drop_rate:
-            print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of request from {client_address}")
-            return
 
     # Unpack service_id which follows request_id
     service_id = struct.unpack('!I', data[request_id_end:request_id_end + 4])[0]
@@ -126,6 +133,15 @@ def process_request(data, client_address):
     filepath_start = filepath_length_start + 4
     filepath_end = filepath_start + filepath_length
     filepath = data[filepath_start:filepath_end].decode('utf-8')
+
+    if simulate_drop_request_count.get(request_id, False):
+        simulate_drop_request_count[request_id] += 1
+    else: 
+        simulate_drop_request_count[request_id] = 1
+        drop_rate = 0  # Simulation: Chance that a message is dropped
+        if random.random() < drop_rate:
+            print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of request from {client_address}")
+            return
 
     # For at-most-once semantics, check if the request has been processed before
     if invocation_semantics == "at-most-once" and request_id in processed_requests:
@@ -190,7 +206,9 @@ def process_request(data, client_address):
 
 
 def start_server(port=2222):
-    """Starts the UDP server to listen for incoming requests."""
+    """
+    Starts the UDP server to listen for incoming requests.
+    """
     global server_socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind(('', port))
