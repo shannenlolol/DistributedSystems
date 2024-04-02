@@ -1,69 +1,67 @@
 from datetime import datetime
-import os
 import random
 import socket
 import struct
-import subprocess
 import threading
 import time
 import tkinter as tk
 import uuid
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
 
 class ClientGUI:
     def __init__(self, master, freshness_interval=30):
         self.master = master
-        self.freshness_interval = freshness_interval
         master.title("UDP Client for File Access")
-
-        # Make window full screen
         master.state('zoomed')
 
-        # Set up the scrollable canvas
-        self.canvas = tk.Canvas(master, highlightthickness=0)  # Removing canvas border
-        self.scrollbar = tk.Scrollbar(master, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
-        # Use a Frame to contain all widgets, which will be placed inside the canvas
-        self.scrollable_frame = ttk.Frame(self.canvas)
-
-        self.canvas_frame = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="center")
-
-        # Update the scrollregion to encompass the scrollable_frame
-        self.scrollable_frame.bind("<Configure>", self.onFrameConfigure)
-
-        # Center the canvas' window when the master widget is resized
-        master.bind("<Configure>", self.onMasterConfigure)
-
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-
         self.cache = {}
+        self.freshness_interval = freshness_interval
 
         self.pending_requests = {}
         self.check_pending_requests_thread = threading.Thread(target=self.check_pending_requests, daemon=True)
         self.check_pending_requests_thread.start()
 
-        # print(self.get_local_network())
-
         self.server_address = ('10.91.15.67', 2222)
-
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        # Replace master with self.scrollable_frame for your GUI elements
-        self.response_text = tk.Text(self.scrollable_frame, height=10, width=60)
+        # Set up the scrollable canvas
+        self.canvas = tk.Canvas(master, highlightthickness=0)  
+        self.scrollbar = tk.Scrollbar(master, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        # Use a Frame to contain all widgets, which will is inside the canvas
+        self.scrollable_frame = ttk.Frame(self.canvas)
+        self.canvas_frame = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="center")
+        self.scrollable_frame.bind("<Configure>", self.onFrameConfigure)
+        master.bind("<Configure>", self.onMasterConfigure)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Response log -----------------------------------------------------------------------------------------------------------
+        self.response_text = tk.Text(self.scrollable_frame, height=10, width=80)
         self.response_text.grid(row=0, column=0, padx=10, pady=30)
         self.response_text.config(state=tk.DISABLED)
 
-        # self.frame_server_select = ttk.LabelFrame(self.scrollable_frame, text="Select Server IP")
-        # self.frame_server_select.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
-        # ttk.Button(self.frame_server_select, text="Scan Network", command=self.scan_network).grid(row=0, column=0, padx=5, pady=5)
-        # self.server_ip_var = tk.StringVar()
-        # self.combobox_server_ip = ttk.Combobox(self.frame_server_select, textvariable=self.server_ip_var, state="readonly")
-        # self.combobox_server_ip.grid(row=0, column=1, padx=5, pady=5)
-        
-        # Frame for Read File Operation
+        # Frame for Server IP -----------------------------------------------------------------------------------------------------------
+        self.frame_ip = ttk.LabelFrame(self.scrollable_frame, text="Set Server IP")
+        self.frame_ip.grid(row=1, column=0, padx=10, pady=10)
+
+        # Input field for Server IP
+        ttk.Label(self.frame_ip, text="IP Address:").grid(row=0, column=0, padx=5, pady=5)
+        self.server_ip_var = tk.StringVar(value='10.91.15.67')  # Default IP
+        ttk.Entry(self.frame_ip, textvariable=self.server_ip_var, width=50).grid(row=0, column=1, padx=5, pady=5)
+
+        # Input field for Server Port
+        ttk.Label(self.frame_ip, text="Server Port:").grid(row=1, column=0, padx=5, pady=5)
+        self.server_port_var = tk.StringVar(value='2222')  # Default port
+        ttk.Entry(self.frame_ip, textvariable=self.server_port_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+        # Button to update server address
+        ttk.Button(self.frame_ip, text="Update Server Address", command=self.update_server_address).grid(row=2, column=0, columnspan=2, pady=5)
+
+
+        # Frame for Read File Operation -----------------------------------------------------------------------------------------------------------
         self.frame_read = ttk.LabelFrame(self.scrollable_frame, text="Read File")
         self.frame_read.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
         
@@ -86,7 +84,7 @@ class ClientGUI:
         ttk.Button(self.frame_read, text="Read", command=self.read_file).grid(row=3, column=0, columnspan=2, pady=5)
         
 
-        # Inside the ClientGUI __init__ method, add a frame for Insert File Operation
+        # Frame for Insert File Operation -----------------------------------------------------------------------------------------------------------
         self.frame_insert = ttk.LabelFrame(self.scrollable_frame, text="Insert Content")
         self.frame_insert.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
 
@@ -108,7 +106,7 @@ class ClientGUI:
         # Insert Button
         ttk.Button(self.frame_insert, text="Insert", command=self.insert_content_to_file).grid(row=3, column=0, columnspan=2, pady=5)
 
-        # Monitoring File Operation
+        # Frame for Monitoring File Operation -----------------------------------------------------------------------------------------------------------
         self.frame_monitor = ttk.LabelFrame(self.scrollable_frame, text="Monitor File")
         self.frame_monitor.grid(row=4, column=0, padx=10, pady=10, sticky="ew")
 
@@ -125,7 +123,7 @@ class ClientGUI:
         # Monitor Button
         ttk.Button(self.frame_monitor, text="Start Monitoring", command=self.start_monitoring).grid(row=2, column=0, columnspan=2, pady=5)
 
-        # GUI for Delete File Operation
+        # Frame for Delete File Operation -----------------------------------------------------------------------------------------------------------
         self.frame_delete = ttk.LabelFrame(self.scrollable_frame, text="Delete File")
         self.frame_delete.grid(row=5, column=0, padx=10, pady=10, sticky="ew")
 
@@ -137,7 +135,7 @@ class ClientGUI:
         # Delete Button
         ttk.Button(self.frame_delete, text="Delete", command=self.delete_file).grid(row=1, column=0, columnspan=2, pady=5)
 
-        # GUI for Create File Operation
+        # Frame for Create File Operation -----------------------------------------------------------------------------------------------------------
         self.frame_create = ttk.LabelFrame(self.scrollable_frame, text="Create File")
         self.frame_create.grid(row=6, column=0, padx=10, pady=10, sticky="ew")
 
@@ -149,13 +147,27 @@ class ClientGUI:
         # Create Button
         ttk.Button(self.frame_create, text="Create", command=self.create_file).grid(row=1, column=0, columnspan=2, pady=5)
     
+
+    def update_server_address(self):
+        """
+        Update the server address using values from the input fields
+        """
+        ip = self.server_ip_var.get()
+        port = int(self.server_port_var.get())
+        self.server_address = (ip, port)
+        print(f"Updated server address to: {self.server_address}")
+
     def onFrameConfigure(self, event=None):
-        '''Reset the scroll region to encompass the inner frame'''
+        """
+        Reset the scroll region to encompass the inner frame
+        """
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self.recenterCanvasWindow()
 
     def onMasterConfigure(self, event=None):
-        '''Center the canvas window when the main window is resized'''
+        """
+        Center the canvas window when the main window is resized
+        """
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
         frame_width = self.scrollable_frame.winfo_reqwidth()
@@ -173,8 +185,10 @@ class ClientGUI:
 
 
     def recenterCanvasWindow(self):
-        '''Re-centers the canvas window'''
-        self.master.update_idletasks()  # Update geometry information
+        """
+        Re-centers the canvas window
+        """
+        self.master.update_idletasks() 
         canvas_width = self.canvas.winfo_width()
         frame_width = self.scrollable_frame.winfo_reqwidth()
         new_x_position = max((canvas_width - frame_width) // 2, 0)
@@ -186,7 +200,97 @@ class ClientGUI:
         else:
             self.canvas.itemconfig(self.canvas_frame, width=canvas_width)
 
+
+    def display_response(self, message):
+        """
+        Displays a server response in the text widget, prepended with a timestamp.
+        """
+        timestamp = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        message_with_timestamp = f"{timestamp} - {message}"
+        if self.response_text.winfo_exists():  
+            self.response_text.config(state=tk.NORMAL)
+            self.response_text.insert(tk.END, message_with_timestamp + "\n")
+            self.response_text.see(tk.END) 
+            self.response_text.config(state=tk.DISABLED)
+
+    def unpack_response(self, data):
+        """
+        Extracts and returns the success status and content from a server response packet.
+        """
+        success, content_length = struct.unpack('!?I', data[:5])
+        content = data[5:5+content_length]
+        return success, content
+
+    def generate_request_id(self):
+        """
+        Generate a unique identifier for each request sent to the server.
+        """
+        return uuid.uuid4().hex
+    
+    def invalidate_cache(self, filepath):
+        """
+        Invalidate all cache entries related to the filepath.
+        """
+        for key in list(self.cache.keys()):
+            if key[0] == filepath:
+                print(f"Invalidating cache of key: {key}")
+                del self.cache[key]
+
+    def send_generic_request(self, service_id, filepath, *additional_data):
+        """
+        Constructs and sends a request to the server based on specified parameters and service ID.
+        """
+        request_id = self.generate_request_id().encode('utf-8')
+        filepath_bytes = filepath.encode('utf-8')
+
+        message_parts = [
+            struct.pack('!I', len(request_id)), 
+            request_id, 
+            struct.pack('!I', service_id), 
+            struct.pack('!I', len(filepath_bytes)), 
+            filepath_bytes 
+        ]
+        
+        # Append additional data directly to message_parts
+        for data in additional_data:
+            if isinstance(data, bytes):
+                message_parts.append(data)
+            else:
+                raise ValueError("additional_data elements must be bytes objects")
+
+        # Combine all parts of the message
+        message = b''.join(message_parts)
+
+        if service_id == 1:  # Assuming 1 is the service_id for reading a file
+            offset, length = additional_data
+            cache_key = (filepath, struct.unpack('!I', offset)[0], struct.unpack('!I', length)[0])
+        else:
+            cache_key = None
+
+        # Store the request details including the cache_key
+        self.pending_requests[request_id] = {"send_time": time.time(), "data": message, "cache_key": cache_key}
+
+        drop_rate = 0  # 30% chance to simulate a message drop
+        if random.random() < drop_rate:
+            print(f"Simulating drop of request to {filepath}")
+            return  # Simulate drop by returning early
+        self.client_socket.settimeout(10)
+        self.client_socket.sendto(message, self.server_address)
+        
+        response, _ = self.client_socket.recvfrom(4096)
+        if not response:
+            print("Socket did not receive data or connection timed out")
+            return None
+        self.client_socket.settimeout(None)
+        # Upon receiving a response, remove the request from pending_requests
+        del self.pending_requests[request_id]
+        return response
+
+
     def check_response(self, response, cache_key=None):
+        """
+        Processes the server's response to a request, updating the cache if necessary, and returns the success status.
+        """
         if response:
             success, content = self.unpack_response(response)
             if success:
@@ -200,7 +304,11 @@ class ClientGUI:
             return success
         return False
 
+
     def read_file(self):
+        """
+        Initiates a request to read a file from the server, including handling cached responses.
+        """
         filepath = self.filepath.get()
         offset = int(self.offset.get())
         length = int(self.length.get())
@@ -221,14 +329,21 @@ class ClientGUI:
         response = self.send_read_request(filepath, offset, length)
         self.check_response(response, cache_key)
 
-                
-    def unpack_response(self, data):
-        success, content_length = struct.unpack('!?I', data[:5])
-        content = data[5:5+content_length]
-        return success, content
-    
+    def send_read_request(self, filepath, offset, length):
+        """
+        Sends a read request to the server with the specified filepath, offset, and length.
+        Both offset (as bytes) and length (as bytes) are passed as additional data.
+        """
+        # Offset and length needs to be packed as bytes since they are numerical values
+        offset_bytes = struct.pack('!I', offset)
+        length_bytes = struct.pack('!I', length)
+        return self.send_generic_request(1, filepath, offset_bytes, length_bytes)
+        
 
     def insert_content_to_file(self):
+        """
+        Sends a request to the server to insert content into a file at a specified offset.
+        """
         filepath = self.insert_filepath.get()
         offset = int(self.insert_offset.get())
         content = self.insert_content.get().encode('utf-8')
@@ -242,8 +357,41 @@ class ClientGUI:
             message = "Error: " + message.decode('utf-8')
         self.display_response(message)
 
+    def send_insert_request(self, filepath, offset, content):
+        """
+        Constructs and sends an insertion request to the server for a given file, offset, and content to insert.
+        """
+        # Offset needs to be packed as bytes since it's a numerical value
+        offset_bytes = struct.pack('!I', offset)
+        return self.send_generic_request(2, filepath, offset_bytes, content)
+        
+
+    def listen_for_updates(self):
+        """
+        Listens for updates from the server on files being monitored, displaying any received updates.
+        """
+        while True:
+            try:
+                response, _ = self.client_socket.recvfrom(4096)
+                message = response.decode('utf-8')
+                print(f"Received message: {message}")  
+
+                # Getting file path from message
+                filepath = message.split(' updated: ')[0]
+
+                # Invalidate cache entries related to the updated file
+                self.invalidate_cache(filepath)
+
+                self.display_response(f"Monitoring Update: {message}")
+
+            except Exception as e:
+                print(f"Stopped listening for monitoring updates: {e}")
+                break
 
     def start_monitoring(self):
+        """
+        Sends a request to the server to start monitoring changes to a specified file.
+        """
         filepath = self.monitor_filepath.get()
         interval = int(self.monitor_interval.get())
         response = self.send_monitor_request(filepath, interval)
@@ -257,68 +405,19 @@ class ClientGUI:
             message = "Monitoring Error: " + message.decode('utf-8')
         self.display_response(message)
 
-    def listen_for_updates(self):
-        while True:
-            try:
-                response, _ = self.client_socket.recvfrom(4096)
-                # Assuming all monitoring updates are plain text and do not require unpacking with unpack_response
-                message = response.decode('utf-8')
-                print(f"Received message: {message}")  # For debugging
+    def send_monitor_request(self, filepath, interval):
+        """
+        Constructs and sends a monitoring request to the server for a given file and monitoring interval.
+        """
+        # Interval needs to be packed as bytes since it's a numerical value
+        interval_bytes = struct.pack('!I', interval)
+        return self.send_generic_request(3, filepath, interval_bytes)
 
-                # Getting file path from message
-                filepath = message.split(' updated: ')[0]
 
-                # Invalidate cache entries related to the updated file
-                self.invalidate_cache(filepath)
-
-                self.display_response(f"Monitoring Update: {message}")
-            except Exception as e:
-                print(f"Stopped listening for monitoring updates: {e}")
-                break
-
-    def display_response(self, message):
-        timestamp = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-        # Combine the timestamp with the original message
-        message_with_timestamp = f"{timestamp} - {message}"
-        if self.response_text.winfo_exists():  # Check if the widget still exists
-            self.response_text.config(state=tk.NORMAL)
-            self.response_text.insert(tk.END, message_with_timestamp + "\n")
-            self.response_text.see(tk.END)  # Scroll to the end
-            self.response_text.config(state=tk.DISABLED)
-
-    def scan_network(self):
-            """Scans the local network for active devices."""
-            # Assuming your network is 192.168.1.x
-            subnet = "192.168.18"
-            active_ips = []
-            for i in range(1, 10):
-                ip = f"{subnet}.{i}"
-                print(ip)
-                result = subprocess.run(["ping", "-c", "1", "-W", "1", ip], stdout=subprocess.DEVNULL)
-                if result.returncode == 0:
-                    print(ip, "DETECTED")
-                    active_ips.append(ip)
-            self.combobox_server_ip['values'] = active_ips
-            if active_ips:
-                self.combobox_server_ip.current(0)
-
-    # def get_local_network(self):
-    #     # Get the default gateway interface
-    #     gws = ni.gateways()
-    #     default_gateway = gws['default'][ni.AF_INET][1]
-
-    #     # Get the IP address of the default gateway interface
-    #     ip = ni.ifaddresses(default_gateway)[ni.AF_INET][0]['addr']
-    #     netmask = ni.ifaddresses(default_gateway)[ni.AF_INET][0]['netmask']
-
-    #     # Calculate the network
-    #     ip_parts = ip.split('.')
-    #     netmask_parts = netmask.split('.')
-    #     network_parts = [str(int(ip_parts[i]) & int(netmask_parts[i])) for i in range(4)]
-    #     network = '.'.join(network_parts)
-    #     return network
-    
     def delete_file(self):
+        """
+        Initiates a request to delete a specified file from the server.
+        """
         filepath = self.delete_filepath.get()
         response = self.send_delete_request(filepath)
         success, message = self.unpack_response(response)
@@ -328,8 +427,16 @@ class ClientGUI:
             message = "Error: " + message.decode('utf-8')
         self.display_response(message)
 
-                
+    def send_delete_request(self, filepath):
+        """
+        Constructs and sends a deletion request to the server for a given file.
+        """
+        return self.send_generic_request(4, filepath)
+        
     def create_file(self):
+        """
+        Sends a request to the server to create a new file with a specified name.
+        """
         filepath = self.create_filepath.get()
         response = self.send_create_request(filepath)
         success, message = self.unpack_response(response)
@@ -339,108 +446,17 @@ class ClientGUI:
             message = "Error: " + message.decode('utf-8')
         self.display_response(message)
     
-    def generate_request_id(self):
-        """Generate a unique request ID."""
-        return uuid.uuid4().hex
-    
-    def send_generic_request(self, service_id, filepath, *additional_data):
-        request_id = self.generate_request_id().encode('utf-8')
-        filepath_bytes = filepath.encode('utf-8')
-
-        # Prepare the beginning part of the message with service_id, request_id, and filepath
-        # Note: No need to include the length of request_id and filepath_bytes in the format string,
-        # as we're directly specifying these in the pack arguments
-        message_parts = [
-            struct.pack('!I', len(request_id)),  # Length of request_id
-            request_id,  # request_id itself
-            struct.pack('!I', service_id),  # Service ID
-            struct.pack('!I', len(filepath_bytes)),  # Length of filepath
-            filepath_bytes  # filepath itself
-        ]
-        
-        # Append additional data directly to message_parts
-        for data in additional_data:
-            if isinstance(data, bytes):
-                message_parts.append(data)
-            else:
-                # This ensures that all additional data must be bytes; otherwise, raise an error
-                raise ValueError("additional_data elements must be bytes objects")
-
-        # Combine all parts of the message
-        message = b''.join(message_parts)
-
-        if service_id == 1:  # Assuming 1 is the service_id for reading a file
-            offset, length = additional_data
-            cache_key = (filepath, struct.unpack('!I', offset)[0], struct.unpack('!I', length)[0])
-        else:
-            cache_key = None
-
-        # Store the request details including the cache_key
-        self.pending_requests[request_id] = {"send_time": time.time(), "data": message, "cache_key": cache_key}
-
-        drop_rate = 0  # 30% chance to simulate a message drop
-        if random.random() < drop_rate:
-            print(f"Simulating drop of request to {filepath}")
-            return  # Simulate drop by returning early
-        self.client_socket.settimeout(5)
-        self.client_socket.sendto(message, self.server_address)
-        
-        response, _ = self.client_socket.recvfrom(4096)
-        if not response:
-            print("Socket did not receive data or connection timed out")
-            return None
-        self.client_socket.settimeout(None)
-        # Upon receiving a response, remove the request from pending_requests
-        del self.pending_requests[request_id]
-        return response
-
-
-    def send_read_request(self, filepath, offset, length):
-      # Pack offset and length as additional data
-        offset_bytes = struct.pack('!I', offset)
-        length_bytes = struct.pack('!I', length)
-        return self.send_generic_request(1, filepath, offset_bytes, length_bytes)
-
-    def send_insert_request(self, filepath, offset, content):
-        """
-        Sends an insert request to the server with the specified filepath, offset, and content.
-        Both offset (as bytes) and content (already in bytes) are passed as additional data.
-        """
-        offset_bytes = struct.pack('!I', offset)
-        # Now 'content' and 'offset' are sent as separate parameters
-        return self.send_generic_request(2, filepath, offset_bytes, content)
-        
-    def send_monitor_request(self, filepath, interval):
-        """
-        Sends a monitor request to the server with the specified filepath and interval.
-        """
-        # Interval needs to be packed as bytes since it's a numerical value
-        interval_bytes = struct.pack('!I', interval)
-        return self.send_generic_request(3, filepath, interval_bytes)
-
-    def send_delete_request(self, filepath):
-        """
-        Sends a delete request to the server for the specified filepath.
-        """
-        # No additional data beyond the filepath is needed for delete, hence no extra parameters beyond the service ID and filepath
-        return self.send_generic_request(4, filepath)
-        
     def send_create_request(self, filepath):
         """
-        Sends a create request to the server for the specified filepath.
+        Constructs and sends a creation request to the server for a given file.
         """
-        # Similar to delete, creating a file requires only the filepath
         return self.send_generic_request(5, filepath)
        
-    def invalidate_cache(self, filepath):
-        # Invalidate all cache entries related to the filepath
-        for key in list(self.cache.keys()):
-            if key[0] == filepath:
-                print(f"Invalidating cache of key: {key}")
-                del self.cache[key]
-
+    
     def check_pending_requests(self):
-        """Periodically checks for pending requests that need to be resent."""
+        """
+        Periodically checks and resends any requests that have not received a response within a certain timeout period.
+        """
         while True:
             current_time = time.time()
             for request_id, request_details in list(self.pending_requests.items()):

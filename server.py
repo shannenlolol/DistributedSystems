@@ -1,5 +1,6 @@
 import socket
 import struct
+import threading
 import time
 from datetime import datetime
 import os
@@ -13,7 +14,6 @@ parser.add_argument('--semantics', choices=['at-least-once', 'at-most-once'], re
 args = parser.parse_args()
 
 invocation_semantics = args.semantics
-print(f"Server starting with {invocation_semantics} semantics.")
 
 # Tracks (request_id, client_address) -> response
 # This is to avoid re-executing operations for at-most-once semantics
@@ -92,7 +92,13 @@ def create_file_content(filepath):
         return True, b"Creation successful"
     except Exception as e:
         return False, str(e).encode()
-    
+
+def monitor_end_thread(filepath, client_address, duration):
+    time.sleep(duration)
+    update_message = f"Monitoring {filepath} has ended".encode('utf-8')
+    print(f"Sending to {client_address} updated content for {filepath} - {update_message}")
+    server_socket.sendto(update_message, client_address)
+
 def process_request(data, client_address):
     # Unpack the first integer to get the length of request_id
     request_id_length = struct.unpack('!I', data[:4])[0]
@@ -149,6 +155,9 @@ def process_request(data, client_address):
             success = True  # The operation to start monitoring is always successful
             ack_message = f"Monitoring {filepath} for {interval} seconds"
             response_message = ack_message.encode('utf-8')
+            end_thread = threading.Thread(target=monitor_end_thread, args=(filepath, client_address, interval))
+            end_thread.daemon = True
+            end_thread.start()
         else:
             # File not found
             success = False
