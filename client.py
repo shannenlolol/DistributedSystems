@@ -82,7 +82,8 @@ class ClientGUI:
         ttk.Entry(self.frame_read, textvariable=self.length).grid(row=2, column=1, padx=5, pady=5 , sticky="w")
         
         # Read Button
-        ttk.Button(self.frame_read, text="Read", command=self.read_file).grid(row=3, column=0, columnspan=2, pady=5)
+        self.read_button = ttk.Button(self.frame_read, text="Read", command=self.read_file)
+        self.read_button.grid(row=3, column=0, columnspan=2, pady=5)
         
 
         # Frame for Insert File Operation -----------------------------------------------------------------------------------------------------------
@@ -105,7 +106,8 @@ class ClientGUI:
         ttk.Entry(self.frame_insert, textvariable=self.insert_content).grid(row=2, column=1, padx=5, pady=5, sticky="w")
 
         # Insert Button
-        ttk.Button(self.frame_insert, text="Insert", command=self.insert_content_to_file).grid(row=3, column=0, columnspan=2, pady=5)
+        self.insert_button = ttk.Button(self.frame_insert, text="Insert", command=self.insert_content_to_file)
+        self.insert_button.grid(row=3, column=0, columnspan=2, pady=5)
 
         # Frame for Monitoring File Operation -----------------------------------------------------------------------------------------------------------
         self.frame_monitor = ttk.LabelFrame(self.scrollable_frame, text="Monitor File")
@@ -135,7 +137,8 @@ class ClientGUI:
         ttk.Entry(self.frame_delete, textvariable=self.delete_filepath, width=50).grid(row=0, column=1, padx=5, pady=5)
 
         # Delete Button
-        ttk.Button(self.frame_delete, text="Delete", command=self.delete_file).grid(row=1, column=0, columnspan=2, pady=5)
+        self.delete_button = ttk.Button(self.frame_delete, text="Delete", command=self.delete_file)
+        self.delete_button.grid(row=1, column=0, columnspan=2, pady=5)
 
         # Frame for Create File Operation -----------------------------------------------------------------------------------------------------------
         self.frame_create = ttk.LabelFrame(self.scrollable_frame, text="Create File")
@@ -147,7 +150,8 @@ class ClientGUI:
         ttk.Entry(self.frame_create, textvariable=self.create_filepath, width=50).grid(row=0, column=1, padx=5, pady=5)
 
         # Create Button
-        ttk.Button(self.frame_create, text="Create", command=self.create_file).grid(row=1, column=0, columnspan=2, pady=5)
+        self.create_button = ttk.Button(self.frame_create, text="Create", command=self.create_file)
+        self.create_button.grid(row=1, column=0, columnspan=2, pady=5)
     
 
     def update_server_address(self):
@@ -379,7 +383,12 @@ class ClientGUI:
                 
                 if(message[0:5] == "FALSE"):
                     self.display_response(f"Monitoring Update: {message[6:]}")
-                    self.monitor_button['state'] = 'normal'  # Enable the button
+                    # Enable the buttons
+                    self.read_button['state'] = 'normal'
+                    self.insert_button['state'] = 'normal'
+                    self.monitor_button['state'] = 'normal'  
+                    self.delete_button['state'] = 'normal'
+                    self.create_button['state'] = 'normal'
                     break
                 print(f"Received message: {message}")  
 
@@ -408,7 +417,12 @@ class ClientGUI:
             self.monitor_thread = threading.Thread(target=self.listen_for_updates, daemon=True)
             self.monitor_thread.start()
             message = message.decode('utf-8')
-            self.monitor_button['state'] = 'disabled'  # Disable the button
+            # Disable the button
+            self.read_button['state'] = 'disabled'
+            self.insert_button['state'] = 'disabled'
+            self.monitor_button['state'] = 'disabled'  
+            self.delete_button['state'] = 'disabled'
+            self.create_button['state'] = 'disabled'
         else:
             message = "Monitoring Error: " + message.decode('utf-8')
         self.display_response(message)
