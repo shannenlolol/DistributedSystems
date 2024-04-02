@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 import random
 import socket
@@ -11,7 +12,7 @@ from tkinter import ttk
 SERVER_IP = '10.91.230.112'
 
 class ClientGUI:
-    def __init__(self, master, freshness_interval=30):
+    def __init__(self, master, freshness_interval):
         self.master = master
         master.title("UDP Client for File Access")
         master.state('zoomed')
@@ -503,9 +504,13 @@ class ClientGUI:
             time.sleep(10)  # Check every 1 seconds
         
 
-def main(freshness_interval=60):
+def main():
+    parser = argparse.ArgumentParser(description='Start client with specified freshness interval.')
+    parser.add_argument('--freshness', type=int, default=30,
+                        help='Freshness interval for the client cache (in seconds).')
+    args = parser.parse_args()
     root = tk.Tk()
-    gui = ClientGUI(root, freshness_interval=freshness_interval)
+    gui = ClientGUI(root, freshness_interval=args.freshness)
     root.mainloop()
 
 if __name__ == "__main__":
