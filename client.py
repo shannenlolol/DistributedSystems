@@ -10,6 +10,7 @@ import uuid
 from tkinter import ttk
 
 SERVER_IP = '10.91.230.112'
+SERVER_PORT = 2222
 
 class ClientGUI:
     def __init__(self, master, freshness_interval):
@@ -24,7 +25,7 @@ class ClientGUI:
         self.check_pending_requests_thread = threading.Thread(target=self.check_pending_requests, daemon=True)
         self.check_pending_requests_thread.start()
 
-        self.server_address = (SERVER_IP, 2222)
+        self.server_address = (SERVER_IP, SERVER_PORT)
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         # Set up the scrollable canvas
@@ -51,12 +52,12 @@ class ClientGUI:
 
         # Input field for Server IP
         ttk.Label(self.frame_ip, text="IP Address:").grid(row=0, column=0, padx=5, pady=5)
-        self.server_ip_var = tk.StringVar(value=SERVER_IP)  # Default IP
+        self.server_ip_var = tk.StringVar(value=SERVER_IP) 
         ttk.Entry(self.frame_ip, textvariable=self.server_ip_var, width=50).grid(row=0, column=1, padx=5, pady=5)
 
         # Input field for Server Port
         ttk.Label(self.frame_ip, text="Server Port:").grid(row=1, column=0, padx=5, pady=5)
-        self.server_port_var = tk.StringVar(value='2222')  # Default port
+        self.server_port_var = tk.StringVar(value=SERVER_PORT) 
         ttk.Entry(self.frame_ip, textvariable=self.server_port_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
         # Button to update server address
@@ -506,7 +507,7 @@ class ClientGUI:
 
 def main():
     parser = argparse.ArgumentParser(description='Start client with specified freshness interval.')
-    parser.add_argument('--freshness', type=int, default=30,
+    parser.add_argument('--freshness', type=int, default=30, required=True,
                         help='Freshness interval for the client cache (in seconds).')
     args = parser.parse_args()
     root = tk.Tk()
