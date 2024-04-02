@@ -19,31 +19,32 @@ invocation_semantics = args.semantics
 # This is to avoid re-executing operations for at-most-once semantics
 processed_requests = {}
 
-simulate_drop_request_count = {} #For simulation of drop messages, tracks how many times a request is received
+# For simulation of drop messages, tracks how many times a request is received
+simulate_drop_request_count = {} 
 
-monitored_files = {}  # {filepath: [(client_address, expiration_time), ...]}
+# {filepath: [(client_address, expiration_time), ...]}
+monitored_files = {} 
 
 def read_file_content(filepath, offset, length):
-    """Reads a specific portion of a file."""
+    """Reads a specific portion of a file at the specified offset and length."""
     try:
         with open(filepath, 'rb') as file:
             file.seek(offset)
             content = file.read(length)
-            return True, content  # Success flag and content
+            return True, content
     except FileNotFoundError:
         return False, b"File not found"
     except Exception as e:
         return False, str(e).encode()
 
 def insert_file_content(filepath, offset, content):
-    """Insert content into a file at the specified offset."""
+    """Insert content into a file at the specified offset and notifies any monitoring clients."""
     try:
         with open(filepath, 'r+b') as file:
             file.seek(offset)
             original_content = file.read()
             file.seek(offset)
-            file.write(content + original_content)  # Insert new content and push forward the original content
-        # Notify monitoring clients about the update
+            file.write(content + original_content)
         notify_monitored_clients(filepath)
         return True, b"Insertion successful"
     except FileNotFoundError:
@@ -58,18 +59,18 @@ def notify_monitored_clients(filepath, delete=False):
     for client_address, expiration_time in clients_to_notify:
         if expiration_time > current_time:
             try:
-                if delete == False:
+                if delete == False: # If Update is not File Delete
                     with open(filepath, 'rb') as file:
                         content = file.read()
-                        update_message = f"{filepath} updated: {content}".encode('utf-8')  # Encoding the message with the file's content
-                        print(f"Sending to {client_address} updated content for {filepath} - {update_message}")
+                        update_message = f"{filepath} updated: {content}".encode('utf-8')
+                        print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Sending to {client_address} updated content for {filepath} - {update_message}")
                         server_socket.sendto(update_message, client_address)
                 else:
                     update_message = f"{filepath} deleted".encode('utf-8')
-                    print(f"Sending to {client_address} updated content for {filepath} - {update_message}")
+                    print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Sending to {client_address} updated content for {filepath} - {update_message}")
                     server_socket.sendto(update_message, client_address)
             except Exception as e:
-                print(f"Error notifying client {client_address}: {e}")
+                print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Error notifying client {client_address}: {e}")
 
 def delete_file_content(filepath):
     """Deletes a specified file."""
@@ -82,42 +83,42 @@ def delete_file_content(filepath):
     except Exception as e:
         return False, str(e).encode()
 
-# Add this new function in the server script
 def create_file_content(filepath):
-    """Creates a new file."""
+    """Creates a new file at the specified filepath."""
     try:
-        # Open the file in write mode which will create the file if it does not exist
         with open(filepath, 'w') as file:
-            pass  # Just opening and closing the file is enough to create it
+            pass
         return True, b"Creation successful"
     except Exception as e:
         return False, str(e).encode()
 
 def monitor_end_thread(filepath, client_address, duration):
+    """Monitors the specified file for a certain duration and sends a notification to the client upon expiration."""
     time.sleep(duration)
     update_message = f"FALSE Monitoring {filepath} shutting down".encode('utf-8')
-    print(f"Sending to {client_address} updated content for {filepath} - {update_message}")
+    print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Sending to {client_address} updated content for {filepath} - {update_message}")
     server_socket.sendto(update_message, client_address)
 
 def process_request(data, client_address):
+    """Processes the incoming request from a client and executes the corresponding service."""
     # Unpack the first integer to get the length of request_id
     request_id_length = struct.unpack('!I', data[:4])[0]
     # Calculate where the request_id itself ends
     request_id_end = 4 + request_id_length
-    request_id = data[4:request_id_end].decode('utf-8')  # Assuming you want to use the request_id as a string
+    request_id = data[4:request_id_end].decode('utf-8')
     if simulate_drop_request_count.get(request_id, False):
         simulate_drop_request_count[request_id] += 1
     else: 
         simulate_drop_request_count[request_id] = 1
-        drop_rate = 0  # 30% chance to simulate a message drop
+        drop_rate = 0  # Simulation: Chance that a message is dropped
         if random.random() < drop_rate:
             print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of request from {client_address}")
             return
 
-    # Now unpack service_id which follows request_id
+    # Unpack service_id which follows request_id
     service_id = struct.unpack('!I', data[request_id_end:request_id_end + 4])[0]
 
-    # Next, we need to find the length of the filepath
+    # Length of the filepath
     filepath_length_start = request_id_end + 4
     filepath_length = struct.unpack('!I', data[filepath_length_start:filepath_length_start + 4])[0]
 
@@ -130,14 +131,17 @@ def process_request(data, client_address):
     if invocation_semantics == "at-most-once" and request_id in processed_requests:
         return processed_requests[request_id]
     print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Received ServiceId {service_id} request from {client_address}")
+
+
     if service_id == 1:  # Read service
         additional_data_start = filepath_end
+        # For Insert, offset (4 bytes) and length to follow filepath
         offset, length = struct.unpack('!II', data[additional_data_start:additional_data_start + 8])
         success, content = read_file_content(filepath, offset, length)
         response = struct.pack('!?I', success, len(content)) + content
 
     elif service_id == 2:  # Insert service
-        # For Insert, we expect offset (4 bytes) and content to follow filepath
+        # For Insert, offset (4 bytes) and content to follow filepath
         offset, = struct.unpack('!I', data[filepath_end:filepath_end + 4])
         content_start = filepath_end + 4
         content = data[content_start:]
@@ -147,12 +151,12 @@ def process_request(data, client_address):
     elif service_id == 3:  # Monitor service
         # Check if the file exists
         if os.path.exists(filepath):
-            # For Monitor, we expect interval (4 bytes) to follow filepath
+            # For Monitor, interval (4 bytes) to follow filepath
             interval, = struct.unpack('!I', data[filepath_end:filepath_end + 4])
             expiration_time = time.time() + interval
             monitored_files.setdefault(filepath, []).append((client_address, expiration_time))
 
-            success = True  # The operation to start monitoring is always successful
+            success = True 
             ack_message = f"Monitoring {filepath} for {interval} seconds"
             response_message = ack_message.encode('utf-8')
             end_thread = threading.Thread(target=monitor_end_thread, args=(filepath, client_address, interval))
@@ -178,7 +182,7 @@ def process_request(data, client_address):
     else:
         response = struct.pack('!?I', False, 0) + b"Unknown service ID"
 
-    # For at-most-once semantics, remember the response for this request
+    # For at-most-once semantics, remember the response for this requestId
     if invocation_semantics == "at-most-once":
         processed_requests[request_id] = response
 
@@ -186,10 +190,11 @@ def process_request(data, client_address):
 
 
 def start_server(port=2222):
+    """Starts the UDP server to listen for incoming requests."""
     global server_socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind(('', port))
-    print(f"Server listening on port {port} using {invocation_semantics} semantics.")
+    print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Server listening on port {port} using {invocation_semantics} semantics.")
 
     try:
         while True:
@@ -198,7 +203,7 @@ def start_server(port=2222):
             if response:
                 server_socket.sendto(response, client_address)
     except KeyboardInterrupt:
-        print("Server shutting down.")
+        print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Server shutting down.")
     finally:
         server_socket.close()
 
