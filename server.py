@@ -50,7 +50,8 @@ def insert_file_content(filepath, offset, content):
             file.seek(offset)
             file.write(content + original_content)
         notify_monitored_clients(filepath)
-        return True, b"Insertion successful"
+        return_message = f"Insertion of content to {filepath} at offset {offset} successful"
+        return True, return_message.encode()
     except FileNotFoundError:
         return False, b"File not found"
     except Exception as e:
@@ -85,7 +86,8 @@ def delete_file_content(filepath):
     try:
         os.remove(filepath)
         notify_monitored_clients(filepath, delete=True)
-        return True, b"Deletion successful"
+        return_message = f"Deletion of {filepath} successful"
+        return True, return_message.encode()
     except FileNotFoundError:
         return False, b"File not found"
     except Exception as e:
@@ -98,7 +100,8 @@ def create_file_content(filepath):
     try:
         with open(filepath, 'w') as file:
             pass
-        return True, b"Creation successful"
+        return_message = f"Creation of {filepath} successful"
+        return True, return_message.encode()
     except Exception as e:
         return False, str(e).encode()
 
