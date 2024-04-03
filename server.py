@@ -134,19 +134,14 @@ def process_request(data, client_address):
     filepath_end = filepath_start + filepath_length
     filepath = data[filepath_start:filepath_end].decode('utf-8')
 
-    if simulate_drop_request_count.get(request_id, False):
-        simulate_drop_request_count[request_id] += 1
-    else: 
-        simulate_drop_request_count[request_id] = 1
-        drop_rate = 0  # Simulation: Chance that a message is dropped
-        if random.random() < drop_rate:
-            print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of request from {client_address}")
-            return
+    print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} RequestId {request_id}: Received ServiceId {service_id} request from {client_address}")
 
     # For at-most-once semantics, check if the request has been processed before
     if invocation_semantics == "at-most-once" and request_id in processed_requests:
+        print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Duplicate RequestId {request_id} detected, returning previous response")
         return processed_requests[request_id]
-    print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Received ServiceId {service_id} request from {client_address}")
+   
+    print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Executing RequestId {request_id}")
 
 
     if service_id == 1:  # Read service
@@ -201,6 +196,15 @@ def process_request(data, client_address):
     # For at-most-once semantics, remember the response for this requestId
     if invocation_semantics == "at-most-once":
         processed_requests[request_id] = response
+
+    if simulate_drop_request_count.get(request_id, False):
+        simulate_drop_request_count[request_id] += 1
+    else: 
+        simulate_drop_request_count[request_id] = 1
+        drop_rate = 0  # Simulation: Chance that a message is dropped
+        if random.random() < drop_rate:
+            print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of requestId {request_id}")
+            return
 
     return response
 

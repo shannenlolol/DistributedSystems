@@ -163,7 +163,7 @@ class ClientGUI:
         ip = self.server_ip_var.get()
         port = int(self.server_port_var.get())
         self.server_address = (ip, port)
-        print(f"Updated server address to: {self.server_address}")
+        print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Updated server address to: {self.server_address}")
 
     def onFrameConfigure(self, event=None):
         """
@@ -229,6 +229,22 @@ class ClientGUI:
         content = data[5:5+content_length]
         return success, content
 
+    def pre_operation_message(self, serviceId):
+        service = ""
+        if serviceId == 1:
+            service = "Read"
+        elif serviceId == 2:
+            service = "Insert"
+        elif serviceId == 3:
+            service = "Monitor File"
+        elif serviceId == 4:
+            service = "Delete File"
+        elif serviceId == 5:
+            service = "Create File"
+        else:
+            return
+        self.display_response(f"Sending {service} request to server")
+
     def generate_request_id(self):
         """
         Generate a unique identifier for each request sent to the server.
@@ -241,7 +257,7 @@ class ClientGUI:
         """
         for key in list(self.cache.keys()):
             if key[0] == filepath:
-                print(f"Invalidating cache of key: {key}")
+                print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Invalidating cache of key: {key}")
                 del self.cache[key]
 
     def send_generic_request(self, service_id, filepath, *additional_data):
@@ -278,17 +294,20 @@ class ClientGUI:
         # Store the request details including the cache_key
         self.pending_requests[request_id] = {"send_time": time.time(), "data": message, "cache_key": cache_key}
 
-        drop_rate = 0  # 30% chance to simulate a message drop
+        self.pre_operation_message(service_id)
+        drop_rate = 0
         if random.random() < drop_rate:
-            print(f"Simulating drop of request to {filepath}")
+            print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of requestId: {request_id.decode('utf-8')}")
             return  # Simulate drop by returning early
-        self.client_socket.settimeout(10)
+        self.client_socket.settimeout(5)
         self.client_socket.sendto(message, self.server_address)
         
-        response, _ = self.client_socket.recvfrom(4096)
-        if not response:
-            print("Socket did not receive data or connection timed out")
+        try:
+            response, _ = self.client_socket.recvfrom(4096)
+        except:
+            print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} requestId: {request_id.decode('utf-8')} Socket did not receive data or connection timed out")
             return None
+
         self.client_socket.settimeout(None)
         # Upon receiving a response, remove the request from pending_requests
         del self.pending_requests[request_id]
@@ -329,7 +348,7 @@ class ClientGUI:
             cached_data, timestamp = self.cache[cache_key]
             if (time.time() - timestamp) < self.freshness_interval:
                 # Use cached data
-                print(f"Reading {cache_key} request from cache")
+                print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Reading {cache_key} request from cache")
                 self.display_response(f"Reading from cache: {cached_data.decode('utf-8')}")
                 return
         
@@ -358,12 +377,7 @@ class ClientGUI:
         # Invalidate relevant cache entries
         self.invalidate_cache(filepath)
         response = self.send_insert_request(filepath, offset, content)
-        success, message = self.unpack_response(response)
-        if success:
-            message = "Insertion successful"
-        else:
-            message = "Error: " + message.decode('utf-8')
-        self.display_response(message)
+        self.check_response(response)
 
     def send_insert_request(self, filepath, offset, content):
         """
@@ -392,7 +406,7 @@ class ClientGUI:
                     self.delete_button['state'] = 'normal'
                     self.create_button['state'] = 'normal'
                     break
-                print(f"Received message: {message}")  
+                print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Received message: {message}")  
 
                 # Getting file path from message
                 filepath = message.split(' updated: ')[0]
@@ -403,7 +417,7 @@ class ClientGUI:
                 self.display_response(f"Monitoring Update: {message}")
 
             except Exception as e:
-                print(f"Stopped listening for monitoring updates: {e}")
+                print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Stopped listening for monitoring updates: {e}")
                 break
 
     def start_monitoring(self):
@@ -444,12 +458,7 @@ class ClientGUI:
         """
         filepath = self.delete_filepath.get()
         response = self.send_delete_request(filepath)
-        success, message = self.unpack_response(response)
-        if success:
-            message = "Deletion successful"
-        else:
-            message = "Error: " + message.decode('utf-8')
-        self.display_response(message)
+        self.check_response(response)
 
     def send_delete_request(self, filepath):
         """
@@ -463,12 +472,7 @@ class ClientGUI:
         """
         filepath = self.create_filepath.get()
         response = self.send_create_request(filepath)
-        success, message = self.unpack_response(response)
-        if success:
-            message = "Creation successful"
-        else:
-            message = "Error: " + message.decode('utf-8')
-        self.display_response(message)
+        self.check_response(response)
     
     def send_create_request(self, filepath):
         """
@@ -484,25 +488,26 @@ class ClientGUI:
         while True:
             current_time = time.time()
             for request_id, request_details in list(self.pending_requests.items()):
-                if current_time - request_details["send_time"] > 20:  # 5-second timeout
-                    print(f"Resending request {request_id} due to timeout")
+                if current_time - request_details["send_time"] > 10:  # 10-second timeout
+                    print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Resending requestId: {request_id.decode('utf-8')} due to timeout")
                     # Resend the request
                     self.client_socket.settimeout(5)
                     self.client_socket.sendto(request_details["data"], self.server_address)
-                    response, _ = self.client_socket.recvfrom(4096)
-                    if not response:
-                        print("Resend request Socket did not receive data or connection timed out")
+                    try:
+                        response, _ = self.client_socket.recvfrom(4096)
+                        if response:
+                            success = self.check_response(response, request_details["cache_key"])
+                            if success:
+                                print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Resend requestId: {request_id} successful")
+                                del self.pending_requests[request_id]
+                            else:
+                                request_details["send_time"] = current_time
+                    except:
+                        print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Resend requestId: {request_id.decode('utf-8')} Socket did not receive data or connection timed out")
                         # Update the send time
-                        request_details["send_time"] = current_time
-                    else:
-                        success = self.check_response(response, request_details["cache_key"])
-                        if success:
-                            print(f"Resend request {request_id} successful")
-                            del self.pending_requests[request_id]
-                        else:
-                            request_details["send_time"] = current_time
+                        request_details["send_time"] = current_time          
                     self.client_socket.settimeout(None)
-            time.sleep(10)  # Check every 1 seconds
+            time.sleep(5)  # Check every 5 seconds
         
 
 def main():
