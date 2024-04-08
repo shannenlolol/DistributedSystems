@@ -7,6 +7,8 @@ import os
 import argparse
 import random
 
+DROP_RATE=0
+
 # Parse command-line arguments to determine invocation semantics
 parser = argparse.ArgumentParser(description='Start server with specified invocation semantics.')
 parser.add_argument('--semantics', choices=['at-least-once', 'at-most-once'], required=True,
@@ -204,7 +206,7 @@ def process_request(data, client_address):
         simulate_drop_request_count[request_id] += 1
     else: 
         simulate_drop_request_count[request_id] = 1
-        drop_rate = 0  # Simulation: Chance that a message is dropped
+        drop_rate = DROP_RATE  # Simulation: Chance that a message is dropped
         if random.random() < drop_rate:
             print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of requestId {request_id}")
             return
