@@ -11,6 +11,7 @@ from tkinter import ttk
 
 SERVER_IP = '10.91.230.112'
 SERVER_PORT = 2222
+DROP_RATE = 0
 
 class ClientGUI:
     def __init__(self, master, freshness_interval):
@@ -295,7 +296,7 @@ class ClientGUI:
         self.pending_requests[request_id] = {"send_time": time.time(), "data": message, "cache_key": cache_key}
 
         self.pre_operation_message(service_id)
-        drop_rate = 0
+        drop_rate = DROP_RATE
         if random.random() < drop_rate:
             print(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} Simulating drop of requestId: {request_id.decode('utf-8')}")
             return  # Simulate drop by returning early
